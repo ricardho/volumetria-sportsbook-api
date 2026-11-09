@@ -1,5 +1,5 @@
 {
-  "name": "site-sportsbook-volumetria",
+  "name": "volumetria-sportsbook-api",
   "version": "1.0.0",
   "description": "Teste de volumetria de apostas do siteSportsbook — geração e execução de apostas reais via API",
   "private": true,
