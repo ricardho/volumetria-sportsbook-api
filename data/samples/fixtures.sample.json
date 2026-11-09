@@ -1,0 +1,110 @@
+[
+  {
+    "matchId": "colocarAquiGameIds",
+    "matchName": "Time Alfa x Time Beta",
+    "tournamentName": "Liga Exemplo A",
+    "sportId": 1,
+    "day": "2030-01-15T19:00:00.000Z",
+    "markets": [
+      {
+        "marketId": "1",
+        "marketName": "Resultado Final",
+        "category": "resultado_final",
+        "specifiers": null,
+        "outcomes": [
+          { "outcomeId": "1", "outcomeName": "Time Alfa", "outcomePrice": 5.93 },
+          { "outcomeId": "2", "outcomeName": "empate", "outcomePrice": 6.17 },
+          { "outcomeId": "3", "outcomeName": "Time Beta", "outcomePrice": 5.75 }
+        ]
+      },
+      {
+        "marketId": "68",
+        "marketName": "1º Tempo – Total de Gols",
+        "category": "parcial_1t",
+        "specifiers": "total=1.25",
+        "outcomes": [
+          { "outcomeId": "12", "outcomeName": "mais de 1.25", "outcomePrice": 6.32 },
+          { "outcomeId": "13", "outcomeName": "menos de 1.25", "outcomePrice": 5.72 }
+        ]
+      },
+      {
+        "marketId": "166",
+        "marketName": "Total de Escanteios",
+        "category": "escanteios",
+        "specifiers": "total=7.5",
+        "outcomes": [
+          { "outcomeId": "12", "outcomeName": "mais de", "outcomePrice": 8.36 },
+          { "outcomeId": "13", "outcomeName": "menos de", "outcomePrice": 7 }
+        ]
+      },
+      {
+        "marketId": "139",
+        "marketName": "Total de Cartões",
+        "category": "cartoes",
+        "specifiers": "total=3.5",
+        "outcomes": [
+          { "outcomeId": "12", "outcomeName": "mais de", "outcomePrice": 4.22 },
+          { "outcomeId": "13", "outcomeName": "menos de", "outcomePrice": 9.28 }
+        ]
+      },
+      {
+        "marketId": "1578",
+        "marketName": "Jogador – Faltas Sofridas",
+        "category": "jogador",
+        "specifiers": "count=5",
+        "outcomes": [
+          { "outcomeId": "player:900004", "outcomeName": "Jogador Exemplo", "outcomePrice": 2.88 }
+        ]
+      },
+      {
+        "marketId": "1601",
+        "marketName": "Resultado Final – (3 Gols de Vantagem)",
+        "category": "resultado_final",
+        "specifiers": "xup=3",
+        "outcomes": [
+          { "outcomeId": "1", "outcomeName": "Time Alfa", "outcomePrice": 6.41 }
+        ]
+      }
+    ]
+  },
+  {
+    "matchId": "colocarAquiGameIds",
+    "matchName": "Time Gama x Time Delta",
+    "tournamentName": "Liga Exemplo A",
+    "sportId": 1,
+    "day": "2030-01-15T16:45:00.000Z",
+    "markets": [
+      {
+        "marketId": "1",
+        "marketName": "Resultado Final",
+        "category": "resultado_final",
+        "specifiers": null,
+        "outcomes": [
+          { "outcomeId": "1", "outcomeName": "Time Gama", "outcomePrice": 9.61 },
+          { "outcomeId": "2", "outcomeName": "empate", "outcomePrice": 5.72 },
+          { "outcomeId": "3", "outcomeName": "Time Delta", "outcomePrice": 4.89 }
+        ]
+      }
+    ]
+  },
+  {
+    "matchId": "colocarAquiGameIds",
+    "matchName": "Time Épsilon x Time Zeta",
+    "tournamentName": "Liga Exemplo A",
+    "sportId": 1,
+    "day": "2030-01-15T16:45:00.000Z",
+    "markets": [
+      {
+        "marketId": "1",
+        "marketName": "Resultado Final",
+        "category": "resultado_final",
+        "specifiers": null,
+        "outcomes": [
+          { "outcomeId": "1", "outcomeName": "Time Épsilon", "outcomePrice": 5.12 },
+          { "outcomeId": "2", "outcomeName": "empate", "outcomePrice": 5.22 },
+          { "outcomeId": "3", "outcomeName": "Time Zeta", "outcomePrice": 2.42 }
+        ]
+      }
+    ]
+  }
+]

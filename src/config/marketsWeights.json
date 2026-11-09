@@ -1,0 +1,31 @@
+{
+  "_comment": "Peso relativo de cada categoria de aposta na geração de dados. A soma não precisa ser 100 — os pesos são normalizados em tempo de execução.",
+  "resultado_final": 25,
+  "total_gols": 15,
+  "parcial_1t": 15,
+  "escanteios": 10,
+  "cartoes": 5,
+  "jogador": 10,
+  "multipla": 15,
+  "bet_builder": 5,
+  "aposta_futura": 5,
+  "ao_vivo": 10,
+
+  "_amount": {
+    "_comment": "Faixa de valor apostado (R$) por bet slip — observado 0.5 em aposta ao vivo",
+    "min": 0.5,
+    "max": 5
+  },
+
+  "_multipla": {
+    "_comment": "Quantidade mínima e máxima de seleções por múltipla, cada uma de uma partida diferente",
+    "min_selecoes": 2,
+    "max_selecoes": 4
+  },
+
+  "_bet_builder": {
+    "_comment": "Quantidade mínima e máxima de seleções combinadas dentro de um único bet builder",
+    "min_selecoes": 2,
+    "max_selecoes": 4
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "site-sportsbook-volumetria",
+  "version": "1.0.0",
+  "description": "Teste de volumetria de apostas do siteSportsbook — geração e execução de apostas reais via API",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "wizard": "ts-node src/cli/wizard.ts",
+    "login": "ts-node src/cli/login.ts",
+    "fetch:fixtures": "ts-node src/cli/fetchFixtures.ts",
+    "fetch:outrights": "ts-node src/cli/fetchSeasonMarkets.ts",
+    "build:pool": "ts-node src/cli/buildFixturePool.ts ./data/raw-fixtures",
+    "test:volumetry": "ts-node src/cli/runVolumetry.ts",
+    "report": "ts-node src/cli/report.ts",
+    "report:settlement": "ts-node src/cli/reportSettlement.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "playwright test"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^10.5.0",
+    "@playwright/test": "^1.48.0",
+    "dotenv": "^16.4.5",
+    "prompts": "^2.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/prompts": "^2.4.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.0"
+  }
+}

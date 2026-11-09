@@ -1,0 +1,14 @@
+[
+  {
+    "eventId": 900001,
+    "marketId": "534",
+    "marketName": "Torneio Exemplo - Vencedor",
+    "specifiers": "variant=pre:markettext:900002",
+    "tournamentName": "Torneio Exemplo 2030",
+    "sportId": 1,
+    "day": "2030-12-31T02:59:59.000Z",
+    "outcomes": [
+      { "outcomeId": "pre:outcometext:900003", "outcomeName": "Time Iota", "outcomePrice": 2.18 }
+    ]
+  }
+]

@@ -1,0 +1,24 @@
+node_modules/
+dist/
+
+# dados reais gerados a cada execução — não versionar (odds mudam constantemente)
+fixtures.prod.json
+liveFixtures.prod.json
+
+# resultados de execução (NDJSON com correlationId por aposta)
+results-*.ndjson
+settlement-*.ndjson
+
+# segredos locais (token de autenticação, senha etc.)
+.env
+.session.json
+.sessions/
+
+*.log
+
+# relatórios gerados (contêm dados retornados pela API)
+relatorio-*.html
+
+# saída do Playwright Test
+test-results/
+playwright-report/

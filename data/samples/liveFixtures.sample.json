@@ -1,0 +1,23 @@
+[
+  {
+    "matchId": "colocarAquiGameIds",
+    "matchName": "Time Eta x Time Teta",
+    "tournamentName": "Liga Exemplo B",
+    "sportId": 1,
+    "day": "2030-01-15T15:00:00.000Z",
+    "markets": [
+      {
+        "marketId": "1",
+        "marketName": "Resultado Final",
+        "category": "ao_vivo",
+        "specifiers": null,
+        "productId": "1",
+        "outcomes": [
+          { "outcomeId": "1", "outcomeName": "Time Eta", "outcomePrice": 7.2 },
+          { "outcomeId": "2", "outcomeName": "empate", "outcomePrice": 9.22 },
+          { "outcomeId": "3", "outcomeName": "Time Teta", "outcomePrice": 8.25 }
+        ]
+      }
+    ]
+  }
+]
