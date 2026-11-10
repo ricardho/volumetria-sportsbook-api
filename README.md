@@ -16,7 +16,8 @@ settlement.
 - **Service Objects**, o equivalente ao Page Object Model para APIs: cada API tem uma classe, e nenhuma outra camada faz HTTP.
 - **Geração de apostas por pesos**, com 10 categorias, incluindo múltiplas, Bet Builder, ao vivo e Aposta Futura.
 - **Cobertura garantida** de cada categoria, mesmo em volumes pequenos.
-- **Circuit breaker** por lote, que aborta a sessão se a taxa de erro ultrapassar o limite.
+- **Circuit breaker** por lote, que aborta a sessão se a taxa de erro ultrapassar o limite ou se o token expirar (HTTP 401).
+- **Travas para produção**: configuração validada antes de disparar, teto de valor total e confirmação explícita digitando `PROD`.
 - **Múltiplas sessões em paralelo**, cada uma com login, dados e resultados próprios.
 - **Validação de settlement**, que aponta liquidações incoerentes e pode falhar um pipeline de CI.
 - **Relatórios HTML autocontidos**, que abrem sem internet.
@@ -64,16 +65,17 @@ do fim da partida:
 
 ```
 src/
-  config/      environments.ts (fonte única das URLs), paths.ts, marketsWeights.json
-  api/         apiClient.ts e services/ (auth, bet, fixture, outrights, settlement)
+  config/      environments.ts (fonte única das URLs), runConfig.ts (leitura e validação do .env), paths.ts, marketsWeights.json
+  api/         apiClient.ts (contexto HTTP com timeout, resultado padronizado) e services/ (auth, bet, fixture, outrights, settlement)
   types/       contratos das apostas, dos pools e do settlement
-  parsers/     resposta bruta da API -> formato interno
+  parsers/     resposta bruta da API -> formato interno (fixtures, outrights, resposta da aposta)
+  logging/     logger de console com timestamp e nível
   factories/   geração de apostas por peso e cobertura
   flows/       fluxos de negócio que combinam services e parsers
   session/     persistência das sessões em .sessions/<rótulo>/
   runner/      executor em lotes, limitador de concorrência, classificação de erros
   reporting/   relatórios HTML de execução e de settlement
-  cli/         pontos de entrada dos comandos npm
+  cli/         pontos de entrada dos comandos npm (shared/ com os prompts e a confirmação de produção)
 data/
   samples/       exemplos do formato dos pools
   raw-fixtures/  respostas de fixture capturadas manualmente
@@ -231,8 +233,9 @@ HTTP local, e a cobertura inclui:
 - geração de apostas, cobertura por categoria e regras de múltiplas;
 - parsing de fixtures pré-jogo e ao vivo;
 - limite de concorrência e classificação de erros;
-- contrato HTTP dos Service Objects;
-- execução em lotes, autenticação e circuit breaker;
+- contrato HTTP dos Service Objects e interpretação da resposta da aposta;
+- validação das variáveis do `.env` e teto de valor total;
+- execução em lotes, autenticação e circuit breaker (inclusive lote padrão, conflitos de seleção, HTTP 401 e token de outro ambiente);
 - settlement, token expirado e consolidação financeira;
 - garantia de que todas as URLs configuradas usam o domínio fictício.
 
@@ -240,5 +243,6 @@ HTTP local, e a cobertura inclui:
 
 - O `refreshToken` em `authService.ts` é uma hipótese não validada e não é usado pelos fluxos.
 - O Correlation ID identifica cada aposta só no log local. O cruzamento com o settlement usa `apostaId` e `codigoRetornado`.
+- O conflito de seleções é reconhecido pelo texto da mensagem (`CONFLICT_PATTERNS` em `src/runner/errorClassifier.ts`), observado na UI e ainda não confirmado no JSON da API.
 - Mercados com `marketId` fora de `MARKET_CATEGORY_BY_ID` (`src/parsers/fixtureParser.ts`) são ignorados.
 - Os arquivos em `data/samples/` documentam o formato, mas trazem `colocarAquiGameIds` no lugar dos IDs e precisam ser preenchidos antes de uma execução.
