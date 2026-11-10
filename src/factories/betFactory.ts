@@ -1,15 +1,18 @@
 import { faker } from '@faker-js/faker';
-import type {
-  BetPayload,
-  BetItem,
-  BetBuilderItem,
-  BetBuilderSelection,
-  FutureBetItem,
-  Fixture,
-  FixtureMarket,
-  SeasonMarket,
-  MarketCategory,
-  Channel,
+import {
+  SIMPLE_MARKET_CATEGORIES,
+  type AnyBetItem,
+  type BetPayload,
+  type BetItem,
+  type BetBuilderItem,
+  type BetBuilderSelection,
+  type FutureBetItem,
+  type Fixture,
+  type FixtureMarket,
+  type SeasonMarket,
+  type MarketCategory,
+  type Channel,
+  type PoolFixture,
 } from '../types';
 import marketsWeights from '../config/marketsWeights.json';
 
@@ -50,8 +53,8 @@ function defaultWeights(): CategoryWeights {
     jogador: marketsWeights.jogador,
     multipla: marketsWeights.multipla,
     bet_builder: marketsWeights.bet_builder,
-    aposta_futura: (marketsWeights as any).aposta_futura ?? 0,
-    ao_vivo: (marketsWeights as any).ao_vivo ?? 0,
+    aposta_futura: marketsWeights.aposta_futura ?? 0,
+    ao_vivo: marketsWeights.ao_vivo ?? 0,
   };
 }
 
@@ -77,7 +80,7 @@ function pickBetType(weights: CategoryWeights = defaultWeights()): BetTypeKey {
 }
 
 /** Retorna todos os mercados de uma fixture que pertencem a uma categoria específica */
-function marketsByCategory(fixture: Fixture & { markets: FixtureMarket[] }, category: MarketCategory) {
+function marketsByCategory(fixture: PoolFixture, category: MarketCategory) {
   return fixture.markets.filter((m) => m.category === category);
 }
 
@@ -90,9 +93,9 @@ function marketsByCategory(fixture: Fixture & { markets: FixtureMarket[] }, cate
  */
 function hasCoverage(
   category: BetTypeKey,
-  fixtures: (Fixture & { markets: FixtureMarket[] })[],
+  fixtures: PoolFixture[],
   seasonMarkets: SeasonMarket[],
-  liveFixtures: (Fixture & { markets: FixtureMarket[] })[],
+  liveFixtures: PoolFixture[],
 ): boolean {
   switch (category) {
     case 'aposta_futura':
@@ -103,8 +106,7 @@ function hasCoverage(
       return fixtures.some((f) => new Set(f.markets.map((m) => m.category)).size >= 2);
     case 'multipla': {
       // precisa de pelo menos 2 fixtures DIFERENTES com algum mercado "simples" utilizável
-      const simpleCategories: MarketCategory[] = ['resultado_final', 'total_gols', 'parcial_1t', 'escanteios', 'cartoes', 'jogador'];
-      const fixturesComMercadoSimples = fixtures.filter((f) => simpleCategories.some((c) => marketsByCategory(f, c).length > 0));
+      const fixturesComMercadoSimples = fixtures.filter((f) => SIMPLE_MARKET_CATEGORIES.some((c) => marketsByCategory(f, c).length > 0));
       return fixturesComMercadoSimples.length >= 2;
     }
     default:
@@ -127,9 +129,9 @@ export interface CoverageReport {
  * qualquer requisição real.
  */
 export function computeCoverageReport(
-  fixtures: (Fixture & { markets: FixtureMarket[] })[],
+  fixtures: PoolFixture[],
   seasonMarkets: SeasonMarket[] = [],
-  liveFixtures: (Fixture & { markets: FixtureMarket[] })[] = [],
+  liveFixtures: PoolFixture[] = [],
   weights: CategoryWeights = defaultWeights(),
 ): CoverageReport {
   const active = getActiveCategories(weights);
@@ -176,7 +178,7 @@ function buildBetItem(
 
 /** Sorteia uma fixture que tenha pelo menos um mercado da categoria pedida */
 function pickFixtureWithCategory(
-  fixtures: (Fixture & { markets: FixtureMarket[] })[],
+  fixtures: PoolFixture[],
   category: MarketCategory,
 ) {
   const candidates = fixtures.filter((f) => marketsByCategory(f, category).length > 0);
@@ -191,7 +193,7 @@ function pickFixtureWithCategory(
 }
 
 function randomAmount(): number {
-  const { min, max } = (marketsWeights as any)._amount;
+  const { min, max } = marketsWeights._amount;
   return Number(faker.number.float({ min, max, fractionDigits: 2 }));
 }
 
@@ -199,39 +201,34 @@ function randomChannel(): Channel {
   return faker.helpers.arrayElement<Channel>(['mobile', 'internet']);
 }
 
-/** Gera uma aposta simples (1 item) em uma categoria específica de mercado (resultado_final, total_gols, parcial_1t, escanteios, cartoes ou jogador) */
-function generateSimpleBet(
-  fixtures: (Fixture & { markets: FixtureMarket[] })[],
-  category: MarketCategory,
-): BetPayload {
-  const { fixture, market } = pickFixtureWithCategory(fixtures, category);
-  const item = buildBetItem(fixture, market);
+/** Envelope comum a todo payload de aposta — só os itens mudam entre os tipos. */
+function buildPayload(items: AnyBetItem[]): BetPayload {
   return {
     accept_odds_changes: false,
     odds_change: null,
     use_bonus: false,
     full_url: null,
-    items: [item],
+    items,
     channel: randomChannel(),
     is_superodds: false,
     amount: randomAmount(),
   };
 }
 
-/** Gera uma múltipla: N seleções, cada uma de uma partida diferente */
-function generateMultipla(fixtures: (Fixture & { markets: FixtureMarket[] })[]): BetPayload {
-  const { min_selecoes, max_selecoes } = (marketsWeights as any)._multipla;
-  const n = faker.number.int({ min: min_selecoes, max: max_selecoes });
+/** Gera uma aposta simples (1 item) em uma categoria específica de mercado (resultado_final, total_gols, parcial_1t, escanteios, cartoes ou jogador) */
+function generateSimpleBet(
+  fixtures: PoolFixture[],
+  category: MarketCategory,
+): BetPayload {
+  const { fixture, market } = pickFixtureWithCategory(fixtures, category);
+  const item = buildBetItem(fixture, market);
+  return buildPayload([item]);
+}
 
-  // categorias "simples" que podem compor uma múltipla (evita puxar bet builder aqui dentro)
-  const simpleCategories: MarketCategory[] = [
-    'resultado_final',
-    'total_gols',
-    'parcial_1t',
-    'escanteios',
-    'cartoes',
-    'jogador',
-  ];
+/** Gera uma múltipla: N seleções, cada uma de uma partida diferente */
+function generateMultipla(fixtures: PoolFixture[]): BetPayload {
+  const { min_selecoes, max_selecoes } = marketsWeights._multipla;
+  const n = faker.number.int({ min: min_selecoes, max: max_selecoes });
 
   const usedMatchIds = new Set<number>();
   const items: BetItem[] = [];
@@ -239,7 +236,8 @@ function generateMultipla(fixtures: (Fixture & { markets: FixtureMarket[] })[]):
   let attempts = 0;
   while (items.length < n && attempts < n * 10) {
     attempts++;
-    const category = faker.helpers.arrayElement(simpleCategories);
+    // só categorias simples (evita puxar bet builder aqui dentro)
+    const category = faker.helpers.arrayElement(SIMPLE_MARKET_CATEGORIES);
     let picked;
     try {
       picked = pickFixtureWithCategory(fixtures, category);
@@ -255,21 +253,12 @@ function generateMultipla(fixtures: (Fixture & { markets: FixtureMarket[] })[]):
     throw new Error('Pool de fixtures insuficiente para montar uma múltipla com partidas diferentes.');
   }
 
-  return {
-    accept_odds_changes: false,
-    odds_change: null,
-    use_bonus: false,
-    full_url: null,
-    items,
-    channel: randomChannel(),
-    is_superodds: false,
-    amount: randomAmount(),
-  };
+  return buildPayload(items);
 }
 
 /** Gera um Bet Builder: várias seleções combinadas na MESMA partida */
-function generateBetBuilder(fixtures: (Fixture & { markets: FixtureMarket[] })[]): BetPayload {
-  const { min_selecoes, max_selecoes } = (marketsWeights as any)._bet_builder;
+function generateBetBuilder(fixtures: PoolFixture[]): BetPayload {
+  const { min_selecoes, max_selecoes } = marketsWeights._bet_builder;
   const n = faker.number.int({ min: min_selecoes, max: max_selecoes });
 
   // Agrupa os mercados por "família" (categoria) e sorteia no máximo 1 por
@@ -327,16 +316,7 @@ function generateBetBuilder(fixtures: (Fixture & { markets: FixtureMarket[] })[]
     selections,
   };
 
-  return {
-    accept_odds_changes: false,
-    odds_change: null,
-    use_bonus: false,
-    full_url: null,
-    items: [item],
-    channel: randomChannel(),
-    is_superodds: false,
-    amount: randomAmount(),
-  };
+  return buildPayload([item]);
 }
 
 /** Gera uma Aposta Futura (mercado de temporada, não ligado a uma partida específica) */
@@ -364,24 +344,15 @@ function generateFutureBet(seasonMarkets: SeasonMarket[]): BetPayload {
     sportId: market.sportId,
   };
 
-  return {
-    accept_odds_changes: false,
-    odds_change: null,
-    use_bonus: false,
-    full_url: null,
-    items: [item],
-    channel: randomChannel(),
-    is_superodds: false,
-    amount: randomAmount(),
-  };
+  return buildPayload([item]);
 }
 
 /** Gera um payload de UM tipo específico (sem sorteio) — usado tanto pelo sorteio aleatório quanto pela cobertura garantida. */
 function generateBetOfType(
   type: BetTypeKey,
-  fixtures: (Fixture & { markets: FixtureMarket[] })[],
+  fixtures: PoolFixture[],
   seasonMarkets: SeasonMarket[],
-  liveFixtures: (Fixture & { markets: FixtureMarket[] })[],
+  liveFixtures: PoolFixture[],
   options: { fixedAmount?: number },
 ): BetPayload {
   let payload: BetPayload;
@@ -417,9 +388,9 @@ function generateBetOfType(
  * @param options.fixedAmount se informado, TODAS as apostas geradas usam exatamente esse valor em vez de sortear dentro da faixa de marketsWeights.json — use isso para rodadas controladas (ex: 10 apostas de R$0,50)
  */
 export function generateBetPayload(
-  fixtures: (Fixture & { markets: FixtureMarket[] })[],
+  fixtures: PoolFixture[],
   seasonMarkets: SeasonMarket[] = [],
-  liveFixtures: (Fixture & { markets: FixtureMarket[] })[] = [],
+  liveFixtures: PoolFixture[] = [],
   options: { fixedAmount?: number } = {},
   weights: CategoryWeights = defaultWeights(),
 ): BetPayload {
@@ -445,9 +416,9 @@ export function generateBetPayload(
 export function generateCoverageBatch(
   totalCount: number,
   minPerCategory: number,
-  fixtures: (Fixture & { markets: FixtureMarket[] })[],
+  fixtures: PoolFixture[],
   seasonMarkets: SeasonMarket[] = [],
-  liveFixtures: (Fixture & { markets: FixtureMarket[] })[] = [],
+  liveFixtures: PoolFixture[] = [],
   options: { fixedAmount?: number } = {},
 ): BetPayload[] {
   const activeCategories = getActiveCategories();

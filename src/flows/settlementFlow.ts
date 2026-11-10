@@ -1,14 +1,13 @@
-import { request as playwrightRequest } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { createAuthenticatedContext } from '../api/apiClient';
+import { createApiContext } from '../api/apiClient';
 import { SiteSportsbookSettlementService, type SettlementLookup } from '../api/services/settlementService';
-import { getDefaultEnvironmentName, getEnvironment } from '../config/environments';
+import { getEnvironment } from '../config/environments';
 import { readEntries, type LogEntry } from '../reporting/generateReport';
 import { createLimiter } from '../runner/concurrencyLimiter';
-import { resolveSessionPaths, type SessionPaths } from '../session/sessionStore';
+import { resolveSessionPaths } from '../session/sessionStore';
 import type { SettlementEntry, SettlementStatus } from '../types/settlement';
-import { resolveToken } from './credentialsFlow';
+import { resolveSessionEnvironment, resolveToken } from './credentialsFlow';
 
 const KNOWN_RESULTS: SettlementStatus[] = ['ganhou', 'perdeu', 'devolvida', 'cancelada', 'pendente'];
 
@@ -40,14 +39,6 @@ export function findInconsistency(valorAposta: number, result: Interpreted): str
   if (resultadoFinal === 'perdeu' && valorRetorno !== 0) return 'Aposta perdida com retorno diferente de zero';
   if (resultadoFinal === 'devolvida' && valorRetorno !== valorAposta) return 'Aposta devolvida com retorno diferente do valor apostado';
   return null;
-}
-
-function readSessionEnvironment(paths: SessionPaths): string {
-  if (fs.existsSync(paths.sessionFile)) {
-    const session = JSON.parse(fs.readFileSync(paths.sessionFile, 'utf-8'));
-    if (session.environment) return session.environment;
-  }
-  return getDefaultEnvironmentName();
 }
 
 function settlementOutputPath(inputPath: string): string {
@@ -92,11 +83,11 @@ export async function settleResultsFile(inputPath: string, concurrency = 10): Pr
 
   const sessionLabel = accepted[0].sessionLabel ?? 'default';
   const paths = resolveSessionPaths(sessionLabel);
-  const environment = readSessionEnvironment(paths);
+  const environment = resolveSessionEnvironment(paths);
   const token = await resolveToken(sessionLabel, environment, paths);
   const api = getEnvironment(environment).api;
 
-  const context = await createAuthenticatedContext(playwrightRequest, token, api);
+  const context = await createApiContext(api, token);
   const service = new SiteSportsbookSettlementService(context, api);
   const limit = createLimiter(concurrency);
   let tokenExpired = false;

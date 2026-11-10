@@ -1,13 +1,20 @@
+import { withApiContext } from '../api/apiClient';
 import { SiteSportsbookFixtureService } from '../api/services/fixtureService';
 import { getDefaultEnvironmentName, getEnvironment } from '../config/environments';
+import { createLogger } from '../logging/logger';
 import { parseFixtureResponse } from '../parsers/fixtureParser';
-import type { Fixture, FixtureMarket } from '../types';
+import type { PoolFixture } from '../types';
 
-export type PoolFixture = Fixture & { markets: FixtureMarket[] };
+export type { PoolFixture } from '../types';
 
-export interface FetchFixturesResult {
+const log = createLogger('fixtures');
+
+export interface FixturePool {
   fixtures: PoolFixture[];
   liveFixtures: PoolFixture[];
+}
+
+export interface FetchFixturesResult extends FixturePool {
   falhas: string[];
 }
 
@@ -22,48 +29,54 @@ export function isLiveFixture(fixture: PoolFixture): boolean {
   return fixture.markets.length > 0 && fixture.markets.every((m) => m.category === 'ao_vivo');
 }
 
+/** Separa fixtures já parseadas em pré-jogo x ao vivo (acrescentando em `into`, se informado). */
+export function splitByLiveness(parsed: PoolFixture[], into: FixturePool = { fixtures: [], liveFixtures: [] }): FixturePool {
+  for (const f of parsed) (isLiveFixture(f) ? into.liveFixtures : into.fixtures).push(f);
+  return into;
+}
+
 /**
  * Busca e faz o parsing de uma lista de IDs/URLs de partida, separando
  * automaticamente em pré-jogo x ao vivo. Não escreve nenhum arquivo —
- * quem chama decide onde salvar o resultado.
+ * quem chama decide onde salvar o resultado (ver savePoolFiles).
  */
 export async function fetchFixturesForInputs(
   inputs: string[],
   environment: string = getDefaultEnvironmentName(),
 ): Promise<FetchFixturesResult> {
-  const service = new SiteSportsbookFixtureService(getEnvironment(environment).fixtures);
-
-  const fixtures: PoolFixture[] = [];
-  const liveFixtures: PoolFixture[] = [];
+  const baseUrl = getEnvironment(environment).fixtures;
+  const pool: FixturePool = { fixtures: [], liveFixtures: [] };
   const falhas: string[] = [];
 
-  for (const input of inputs) {
-    let matchId: string;
-    try {
-      matchId = extractMatchId(input);
-    } catch (err: any) {
-      console.error(err.message);
-      falhas.push(input);
-      continue;
-    }
+  await withApiContext(baseUrl, async (context) => {
+    const service = new SiteSportsbookFixtureService(context, baseUrl);
 
-    console.log(`Buscando fixture ${matchId}...`);
-    try {
-      const raw = await service.getFixture(matchId);
-      const parsed = parseFixtureResponse(raw);
-      if (parsed.length === 0) {
-        console.warn(`  -> fixture ${matchId} não retornou mercados mapeados (verifique MARKET_CATEGORY_BY_ID em fixtureParser.ts).`);
+    for (const input of inputs) {
+      let matchId: string;
+      try {
+        matchId = extractMatchId(input);
+      } catch (err: any) {
+        log.error(err.message);
+        falhas.push(input);
+        continue;
       }
-      for (const f of parsed) {
-        const isLive = isLiveFixture(f);
-        (isLive ? liveFixtures : fixtures).push(f);
-        console.log(`  -> ${f.matchName} (${isLive ? 'AO VIVO' : 'pré-jogo'}), ${f.markets.length} mercados mapeados`);
-      }
-    } catch (err: any) {
-      console.error(`  -> erro ao buscar/processar ${matchId}: ${err.message}`);
-      falhas.push(input);
-    }
-  }
 
-  return { fixtures, liveFixtures, falhas };
+      log.info(`Buscando fixture ${matchId}...`);
+      try {
+        const parsed = parseFixtureResponse(await service.getFixture(matchId));
+        if (parsed.length === 0) {
+          log.warn(`fixture ${matchId} não retornou mercados mapeados (verifique MARKET_CATEGORY_BY_ID em fixtureParser.ts).`);
+        }
+        splitByLiveness(parsed, pool);
+        for (const f of parsed) {
+          log.info(`  -> ${f.matchName} (${isLiveFixture(f) ? 'AO VIVO' : 'pré-jogo'}), ${f.markets.length} mercados mapeados`);
+        }
+      } catch (err: any) {
+        log.error(`erro ao buscar/processar ${matchId}: ${err.message}`);
+        falhas.push(input);
+      }
+    }
+  });
+
+  return { ...pool, falhas };
 }

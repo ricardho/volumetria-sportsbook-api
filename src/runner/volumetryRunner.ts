@@ -1,22 +1,29 @@
 /**
  * Executor do teste de volumetria — roda para UMA sessão por vez. Escalona o
- * volume em lotes e aborta automaticamente se a taxa de erro de um lote
- * ultrapassar o threshold configurado.
+ * volume em lotes e aborta automaticamente quando:
+ *   - a taxa de erro real de um lote ultrapassa o threshold configurado
+ *     (conflitos de seleção do Bet Builder NÃO contam — são rejeições esperadas);
+ *   - a API responde 401 (token expirado/inválido): as apostas restantes do
+ *     lote nem são enviadas.
  */
-import { request as playwrightRequest } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { createAuthenticatedContext } from '../api/apiClient';
+import { createApiContext } from '../api/apiClient';
 import { SiteSportsbookBetService } from '../api/services/betService';
 import { getEnvironment } from '../config/environments';
 import { computeCoverageReport, generateBetPayload, generateCoverageBatch } from '../factories/betFactory';
 import { resolveToken } from '../flows/credentialsFlow';
-import type { PoolFixture } from '../flows/fixturesFlow';
+import { createLogger, type Logger } from '../logging/logger';
+import { parseBetResponse } from '../parsers/betResponseParser';
 import { resolveSessionPaths, type SessionPaths } from '../session/sessionStore';
-import type { BetPayload, SeasonMarket } from '../types';
+import type { BetPayload, PoolFixture, SeasonMarket } from '../types';
 import { createLimiter } from './concurrencyLimiter';
-import { classifyErrorStatus } from './errorClassifier';
 import { summarizePayload } from './payloadSummary';
+
+/** Lote padrão: pequeno o bastante para o circuit breaker agir cedo, mesmo quando ninguém informa o tamanho. */
+export const DEFAULT_BATCH_SIZE = 100;
+export const DEFAULT_CONCURRENCY = 5;
+export const DEFAULT_ERROR_THRESHOLD = 0.02;
 
 export interface RunSessionParams {
   sessionLabel: string;
@@ -33,71 +40,92 @@ export interface RunSessionParams {
 
 type LogResult = (entry: Record<string, unknown>) => void;
 
+interface BatchOutcome {
+  successCount: number;
+  /** Falhas reais (contam para a taxa de erro). */
+  failureCount: number;
+  /** Rejeições por conflito de seleção (não contam para a taxa de erro). */
+  conflictCount: number;
+  /** Apostas aceitas cuja resposta veio sem bets[0].id. */
+  unexpectedFormatCount: number;
+  /** Apostas do lote que nem chegaram a ser enviadas (token expirou antes). */
+  skippedCount: number;
+  authExpired: boolean;
+}
+
+function newCorrelationId(): string {
+  return `QA-SITESPORTSBOOK-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 async function dispatchBatch(
   service: SiteSportsbookBetService,
   payloads: BetPayload[],
-  limit: (fn: () => Promise<void>) => Promise<void>,
+  limit: <T>(fn: () => Promise<T>) => Promise<T>,
   logResult: LogResult,
-) {
-  let successCount = 0;
-  let failureCount = 0;
+): Promise<BatchOutcome> {
+  const outcome: BatchOutcome = {
+    successCount: 0,
+    failureCount: 0,
+    conflictCount: 0,
+    unexpectedFormatCount: 0,
+    skippedCount: 0,
+    authExpired: false,
+  };
 
   const tasks = payloads.map((payload) =>
     limit(async () => {
-      const correlationId = `QA-SITESPORTSBOOK-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      // Token expirou no meio do lote: não adianta (nem é seguro) continuar disparando.
+      if (outcome.authExpired) {
+        outcome.skippedCount++;
+        return;
+      }
+
+      const correlationId = newCorrelationId();
       const startedAt = Date.now();
+      const base = { correlationId, requestSummary: summarizePayload(payload), valorAposta: payload.amount };
 
       try {
-        const response = await service.placeBet(payload);
-        const status = response.status();
-        const body = await response.json().catch(() => null);
+        const result = await service.placeBet(payload);
+        const parsed = parseBetResponse(result);
 
-        const ok = status === 201;
-        if (ok) successCount++;
-        else failureCount++;
+        if (result.status === 401) outcome.authExpired = true;
+        if (parsed.ok) outcome.successCount++;
+        else if (parsed.statusAposta === 'conflito_selecao') outcome.conflictCount++;
+        else outcome.failureCount++;
+        if (parsed.formatoInesperado) outcome.unexpectedFormatCount++;
 
-        const erroDetalhe = ok ? null : (body?.message ?? (body ? JSON.stringify(body) : `HTTP ${status} sem corpo de resposta`));
-
-        logResult({
-          correlationId,
-          status,
-          ok,
-          durationMs: Date.now() - startedAt,
-          requestSummary: summarizePayload(payload),
-          clienteId: body?.bets?.[0]?.passador_id ?? null,
-          clienteNome: body?.bets?.[0]?.apostador ?? null,
-          valorAposta: payload.amount,
-          statusAposta: ok ? (body?.bets?.[0]?.resultado ?? 'pendente') : classifyErrorStatus(erroDetalhe),
-          erroDetalhe,
-          apostaId: body?.bets?.[0]?.id ?? null,
-          codigoRetornado: body?.bets?.[0]?.codigo ?? null,
-          idRetornado: body?.bets?.[0]?.id ?? null,
-        });
+        const { formatoInesperado, ...fields } = parsed;
+        logResult({ ...base, status: result.status, durationMs: Date.now() - startedAt, ...fields });
       } catch (err: any) {
-        failureCount++;
+        outcome.failureCount++;
+        const message = err?.message ?? String(err);
         logResult({
-          correlationId,
+          ...base,
           status: 'error',
           ok: false,
-          error: err?.message ?? String(err),
-          requestSummary: summarizePayload(payload),
+          durationMs: Date.now() - startedAt,
+          error: message,
+          statusAposta: 'erro',
+          erroDetalhe: message,
+          apostaId: null,
+          codigoRetornado: null,
           clienteId: null,
           clienteNome: null,
-          valorAposta: payload.amount,
-          statusAposta: 'erro',
-          erroDetalhe: err?.message ?? String(err),
-          apostaId: null,
         });
       }
     }),
   );
 
   await Promise.all(tasks);
-  return { successCount, failureCount };
+  return outcome;
 }
 
-function readJsonIfExists<T>(filePath: string, fallback: T): T {
-  return fs.existsSync(filePath) ? (JSON.parse(fs.readFileSync(filePath, 'utf-8')) as T) : fallback;
+function readJsonFile<T>(filePath: string): T {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as T;
+  } catch (err: any) {
+    throw new Error(`Não consegui ler ${filePath}: ${err.message}`);
+  }
 }
 
 function loadDataPools(sessionLabel: string, paths: SessionPaths) {
@@ -106,25 +134,53 @@ function loadDataPools(sessionLabel: string, paths: SessionPaths) {
       `[${sessionLabel}] Pool de fixtures não encontrado em ${paths.fixturesPath}. Rode fetchFixtures (ou o wizard) para essa sessão primeiro.`,
     );
   }
+  const optional = <T>(filePath: string): T[] => (fs.existsSync(filePath) ? readJsonFile<T[]>(filePath) : []);
   return {
-    fixtures: JSON.parse(fs.readFileSync(paths.fixturesPath, 'utf-8')) as PoolFixture[],
-    seasonMarkets: readJsonIfExists<SeasonMarket[]>(paths.seasonMarketsPath, []),
-    liveFixtures: readJsonIfExists<PoolFixture[]>(paths.liveFixturesPath, []),
+    fixtures: readJsonFile<PoolFixture[]>(paths.fixturesPath),
+    seasonMarkets: optional<SeasonMarket>(paths.seasonMarketsPath),
+    liveFixtures: optional<PoolFixture>(paths.liveFixturesPath),
   };
 }
+
+/** Abre o NDJSON de resultados e expõe a escrita + um fechamento que propaga erro de disco (em vez de perdê-lo em silêncio). */
+function openResultsFile(resultsPath: string, sessionLabel: string, log: Logger) {
+  const stream = fs.createWriteStream(resultsPath, { flags: 'a' });
+  let streamError: Error | null = null;
+  stream.on('error', (err) => {
+    streamError ??= err;
+    log.error(`Falha ao gravar ${resultsPath}: ${err.message}`);
+  });
+
+  const write: LogResult = (entry) => {
+    if (!streamError) stream.write(JSON.stringify({ sessionLabel, ...entry }) + '\n');
+  };
+  const close = () =>
+    new Promise<void>((resolve, reject) => {
+      // Espera o flush: o relatório lê este arquivo logo depois que a execução retorna.
+      stream.end(() => (streamError ? reject(streamError) : resolve()));
+    });
+  return { write, close, hasError: () => streamError !== null };
+}
+
+const pct = (rate: number) => `${(rate * 100).toFixed(2)}%`;
 
 export async function runVolumetryForSession(params: RunSessionParams): Promise<string> {
   const {
     sessionLabel,
     environment,
     totalBets,
-    batchSize = totalBets,
-    concurrency = 20,
+    concurrency = DEFAULT_CONCURRENCY,
     betAmount,
     minPerCategory,
-    errorThreshold = 0.02,
+    errorThreshold = DEFAULT_ERROR_THRESHOLD,
     token: providedToken,
   } = params;
+  const batchSize = params.batchSize ?? Math.min(totalBets, DEFAULT_BATCH_SIZE);
+  const log = createLogger(sessionLabel);
+
+  if (!Number.isInteger(totalBets) || totalBets < 1) throw new Error(`[${sessionLabel}] totalBets inválido: ${totalBets}.`);
+  if (!Number.isInteger(batchSize) || batchSize < 1) throw new Error(`[${sessionLabel}] batchSize inválido: ${batchSize}.`);
+  if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error(`[${sessionLabel}] concurrency inválido: ${concurrency}.`);
 
   const betApi = getEnvironment(environment).api;
   const paths = resolveSessionPaths(sessionLabel);
@@ -138,16 +194,14 @@ export async function runVolumetryForSession(params: RunSessionParams): Promise<
     allPayloads = generateCoverageBatch(totalBets, minPerCategory, fixtures, seasonMarkets, liveFixtures, {
       fixedAmount: betAmount,
     });
-    console.log(`[${sessionLabel}] Cobertura garantida: pelo menos ${minPerCategory} apostas de cada categoria ativa.`);
+    log.info(`Cobertura garantida: pelo menos ${minPerCategory} apostas de cada categoria ativa.`);
   }
 
   // Sorteio aleatório: categorias sem cobertura são excluídas ANTES de
   // disparar qualquer aposta, em vez de derrubar a sessão no meio da execução.
   const coverage = computeCoverageReport(fixtures, seasonMarkets, liveFixtures);
   if (coverage.unavailable.length > 0) {
-    console.warn(
-      `[${sessionLabel}] Aviso: categoria(s) sem cobertura no pool desta sessão — excluída(s) do sorteio: ${coverage.unavailable.join(', ')}.`,
-    );
+    log.warn(`Categoria(s) sem cobertura no pool desta sessão — excluída(s) do sorteio: ${coverage.unavailable.join(', ')}.`);
   }
   if (coverage.available.length === 0) {
     throw new Error(
@@ -156,19 +210,16 @@ export async function runVolumetryForSession(params: RunSessionParams): Promise<
   }
 
   const resultsPath = path.join(paths.resultsDir, `results-${sessionLabel}-${Date.now()}.ndjson`);
-  const resultsStream = fs.createWriteStream(resultsPath, { flags: 'a' });
-  const logResult: LogResult = (entry) => {
-    resultsStream.write(JSON.stringify({ sessionLabel, ...entry }) + '\n');
-  };
-
-  const context = await createAuthenticatedContext(playwrightRequest, resolvedToken, betApi);
+  const results = openResultsFile(resultsPath, sessionLabel, log);
+  const context = await createApiContext(betApi, resolvedToken);
   const service = new SiteSportsbookBetService(context, betApi);
   const limit = createLimiter(concurrency);
 
-  console.log(
-    `[${sessionLabel}] Iniciando — ambiente: ${environment} (${betApi}), total: ${totalBets} apostas, lote: ${batchSize}, concorrência: ${concurrency}${betAmount !== undefined ? `, valor: R$${betAmount.toFixed(2)}` : ''}`,
+  log.info(
+    `Iniciando — ambiente: ${environment} (${betApi}), total: ${totalBets} apostas, lote: ${batchSize}, concorrência: ${concurrency}, ` +
+      `threshold de erro: ${pct(errorThreshold)}${betAmount !== undefined ? `, valor: R$${betAmount.toFixed(2)}` : ''}`,
   );
-  console.log(`[${sessionLabel}] Resultados sendo gravados em: ${resultsPath}`);
+  log.info(`Resultados sendo gravados em: ${resultsPath}`);
 
   try {
     let executed = 0;
@@ -181,27 +232,44 @@ export async function runVolumetryForSession(params: RunSessionParams): Promise<
             generateBetPayload(fixtures, seasonMarkets, liveFixtures, { fixedAmount: betAmount }, coverage.effectiveWeights),
           );
 
-      const { successCount, failureCount } = await dispatchBatch(service, batchPayloads, limit, logResult);
-      executed += currentBatchSize;
+      const batch = await dispatchBatch(service, batchPayloads, limit, results.write);
+      const sent = currentBatchSize - batch.skippedCount;
+      executed += sent;
 
-      const errorRate = failureCount / currentBatchSize;
-      console.log(
-        `[${sessionLabel}] Lote concluído: ${executed}/${totalBets} — sucesso: ${successCount}, falha: ${failureCount} (taxa de erro: ${(errorRate * 100).toFixed(2)}%)`,
+      // Conflitos são rejeições esperadas do Bet Builder: saem do numerador E do denominador.
+      const evaluated = sent - batch.conflictCount;
+      const errorRate = evaluated > 0 ? batch.failureCount / evaluated : 0;
+      log.info(
+        `Lote concluído: ${executed}/${totalBets} — sucesso: ${batch.successCount}, falha: ${batch.failureCount}, ` +
+          `conflito de seleção: ${batch.conflictCount} (taxa de erro: ${pct(errorRate)})`,
       );
-
-      if (errorRate > errorThreshold) {
-        console.error(
-          `[${sessionLabel}] Taxa de erro (${(errorRate * 100).toFixed(2)}%) ultrapassou o threshold (${(errorThreshold * 100).toFixed(2)}%). Abortando essa sessão.`,
+      if (batch.unexpectedFormatCount > 0) {
+        log.warn(
+          `${batch.unexpectedFormatCount} aposta(s) aceita(s) sem bets[0].id na resposta — o settlement não vai conseguir consultá-las. Verifique parsers/betResponseParser.ts.`,
         );
+      }
+
+      if (batch.authExpired) {
+        log.error(
+          `API respondeu 401 (token expirado ou inválido). Abortando essa sessão — ${batch.skippedCount} aposta(s) do lote não foram enviadas. ` +
+            'Rode "npm run login" e execute novamente.',
+        );
+        break;
+      }
+      if (errorRate > errorThreshold) {
+        log.error(`Taxa de erro (${pct(errorRate)}) ultrapassou o threshold (${pct(errorThreshold)}). Abortando essa sessão.`);
+        break;
+      }
+      if (results.hasError()) {
+        log.error('Gravação dos resultados falhou — abortando para não disparar apostas sem registro.');
         break;
       }
     }
   } finally {
     await context.dispose();
-    // Espera o flush: o relatório lê este arquivo logo depois que a função retorna.
-    await new Promise<void>((resolve) => resultsStream.end(() => resolve()));
+    await results.close();
   }
 
-  console.log(`[${sessionLabel}] Finalizado.`);
+  log.info('Finalizado.');
   return resultsPath;
 }

@@ -27,7 +27,7 @@ test('BetService faz POST no endpoint de apostas', async ({ request }) => {
   const server = await startMockServer(() => ({ status: 201, body: {} }));
   try {
     const response = await new SiteSportsbookBetService(request, server.url).placeBet({ amount: 1, items: [] } as any);
-    expect(response.status()).toBe(201);
+    expect(response.status).toBe(201);
     expect(server.requests[0].method).toBe('POST');
     expect(server.requests[0].url).toBe('/sportsbook/bet');
   } finally {
@@ -35,10 +35,10 @@ test('BetService faz POST no endpoint de apostas', async ({ request }) => {
   }
 });
 
-test('FixtureService monta a query e propaga erro HTTP', async () => {
+test('FixtureService monta a query e propaga erro HTTP', async ({ request }) => {
   const server = await startMockServer((req) => (req.url.includes('id=404') ? { status: 404 } : { status: 200, body: { ok: true } }));
   try {
-    const service = new SiteSportsbookFixtureService(server.url);
+    const service = new SiteSportsbookFixtureService(request, server.url);
     await expect(service.getFixture('123')).resolves.toEqual({ ok: true });
     expect(server.requests[0].url).toBe('/data?key=fixture&id=123');
     await expect(service.getFixture('404')).rejects.toThrow('HTTP 404');
@@ -47,10 +47,10 @@ test('FixtureService monta a query e propaga erro HTTP', async () => {
   }
 });
 
-test('OutrightsService chama /v1/outrights', async () => {
+test('OutrightsService chama /v1/outrights', async ({ request }) => {
   const server = await startMockServer(() => ({ status: 200, body: [] }));
   try {
-    await expect(new SiteSportsbookOutrightsService(server.url).getOutrights()).resolves.toEqual([]);
+    await expect(new SiteSportsbookOutrightsService(request, server.url).getOutrights()).resolves.toEqual([]);
     expect(server.requests[0].url).toBe('/v1/outrights');
   } finally {
     await server.close();

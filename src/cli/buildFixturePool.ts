@@ -7,12 +7,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { PROJECT_ROOT, RAW_FIXTURES_DIR } from '../config/paths';
-import { isLiveFixture, type PoolFixture } from '../flows/fixturesFlow';
+import { splitByLiveness, type FixturePool } from '../flows/fixturesFlow';
 import { parseFixtureResponse } from '../parsers/fixtureParser';
+import { savePoolFiles } from '../session/sessionStore';
 
 const rawDir = process.argv[2] ?? RAW_FIXTURES_DIR;
-const outFixtures = path.join(PROJECT_ROOT, 'fixtures.prod.json');
-const outLive = path.join(PROJECT_ROOT, 'liveFixtures.prod.json');
 
 const files = fs.readdirSync(rawDir).filter((f) => f.endsWith('.json'));
 if (files.length === 0) {
@@ -20,19 +19,18 @@ if (files.length === 0) {
   process.exit(1);
 }
 
-const fixtures: PoolFixture[] = [];
-const liveFixtures: PoolFixture[] = [];
-
+const pool: FixturePool = { fixtures: [], liveFixtures: [] };
 for (const file of files) {
-  const raw = JSON.parse(fs.readFileSync(path.join(rawDir, file), 'utf-8'));
-  for (const f of parseFixtureResponse(raw)) {
-    (isLiveFixture(f) ? liveFixtures : fixtures).push(f);
+  const filePath = path.join(rawDir, file);
+  try {
+    splitByLiveness(parseFixtureResponse(JSON.parse(fs.readFileSync(filePath, 'utf-8'))), pool);
+  } catch (err: any) {
+    console.error(`Ignorando ${filePath}: ${err.message}`);
   }
 }
 
-fs.writeFileSync(outFixtures, JSON.stringify(fixtures, null, 2));
-fs.writeFileSync(outLive, JSON.stringify(liveFixtures, null, 2));
+const saved = savePoolFiles(PROJECT_ROOT, pool);
 
 console.log(`Arquivos processados: ${files.length}`);
-console.log(`Fixtures pré-jogo: ${fixtures.length} -> ${outFixtures}`);
-console.log(`Fixtures ao vivo: ${liveFixtures.length} -> ${outLive}`);
+console.log(`Fixtures pré-jogo: ${pool.fixtures.length} -> ${saved.fixturesPath}`);
+console.log(`Fixtures ao vivo: ${pool.liveFixtures.length} -> ${saved.liveFixturesPath}`);

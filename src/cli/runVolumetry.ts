@@ -2,28 +2,39 @@
  * Roda o teste de volumetria para uma sessão, configurado por variáveis de ambiente.
  *
  * Uso: SITE_SPORTSBOOK_TOTAL_BETS=1000 npm run test:volumetry
+ *      (em produção pede confirmação; sem terminal interativo, use -- --confirmar-prod)
  */
 import * as dotenv from 'dotenv';
 import { getDefaultEnvironmentName } from '../config/environments';
+import { assertWithinStakeLimit, estimateMaxStake, readRunConfig } from '../config/runConfig';
 import { runVolumetryForSession } from '../runner/volumetryRunner';
+import { confirmProduction } from './shared/prompts';
 
 dotenv.config();
 
-function optionalNumber(name: string): number | undefined {
-  const value = process.env[name];
-  return value ? Number(value) : undefined;
+async function main() {
+  const environment = getDefaultEnvironmentName();
+  const config = readRunConfig();
+
+  const estimatedStake = estimateMaxStake(config.totalBets, config.betAmount);
+  assertWithinStakeLimit(estimatedStake, config.maxTotalValue);
+
+  if (environment === 'prod') {
+    const valor = config.betAmount !== undefined ? `R$${config.betAmount.toFixed(2)} cada` : 'valor sorteado por aposta';
+    const confirmed = await confirmProduction(
+      `Sessão "${config.sessionLabel}": ${config.totalBets} apostas (${valor}), até R$${estimatedStake.toFixed(2)} em jogo.`,
+    );
+    if (!confirmed) {
+      console.log('Execução cancelada.');
+      process.exitCode = 1;
+      return;
+    }
+  }
+
+  await runVolumetryForSession({ ...config, environment });
 }
 
-runVolumetryForSession({
-  sessionLabel: process.env.SITE_SPORTSBOOK_SESSION_LABEL ?? 'default',
-  environment: getDefaultEnvironmentName(),
-  totalBets: Number(process.env.SITE_SPORTSBOOK_TOTAL_BETS ?? 500),
-  batchSize: optionalNumber('SITE_SPORTSBOOK_BATCH_SIZE'),
-  concurrency: optionalNumber('SITE_SPORTSBOOK_CONCURRENCY'),
-  betAmount: optionalNumber('SITE_SPORTSBOOK_BET_AMOUNT'),
-  minPerCategory: optionalNumber('SITE_SPORTSBOOK_MIN_PER_CATEGORY'),
-  errorThreshold: optionalNumber('SITE_SPORTSBOOK_ERROR_THRESHOLD'),
-}).catch((err) => {
-  console.error('Erro fatal na execução do teste:', err);
+main().catch((err) => {
+  console.error('Erro fatal na execução do teste:', err?.message ?? err);
   process.exit(1);
 });

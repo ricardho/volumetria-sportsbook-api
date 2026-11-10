@@ -1,5 +1,6 @@
-import type { APIRequestContext, APIResponse } from '@playwright/test';
+import type { APIRequestContext } from '@playwright/test';
 import type { BetPayload } from '../../types';
+import { toApiResult, type ApiResult } from '../apiClient';
 
 export class SiteSportsbookBetService {
   constructor(
@@ -7,10 +8,9 @@ export class SiteSportsbookBetService {
     private readonly baseUrl: string,
   ) {}
 
-  /** Dispara uma aposta contra o endpoint POST /sportsbook/bet */
-  async placeBet(payload: BetPayload): Promise<APIResponse> {
-    return this.request.post(`${this.baseUrl}/sportsbook/bet`, {
-      data: payload,
-    });
+  /** Dispara uma aposta contra o endpoint POST /sportsbook/bet. A interpretação da resposta fica em parsers/betResponseParser.ts. */
+  async placeBet(payload: BetPayload): Promise<ApiResult> {
+    const res = await this.request.post(`${this.baseUrl}/sportsbook/bet`, { data: payload });
+    return toApiResult(res);
   }
 }

@@ -1,7 +1,13 @@
+import { withApiContext } from '../api/apiClient';
 import { SiteSportsbookOutrightsService } from '../api/services/outrightsService';
 import { getDefaultEnvironmentName, getEnvironment } from '../config/environments';
 import { parseFirstActiveMarket, parseOutrightsResponse } from '../parsers/outrightsParser';
 import type { SeasonMarket } from '../types';
+
+function fetchRawOutrights(environment: string): Promise<any> {
+  const baseUrl = getEnvironment(environment).feed;
+  return withApiContext(baseUrl, (context) => new SiteSportsbookOutrightsService(context, baseUrl).getOutrights());
+}
 
 /**
  * Busca e faz o parsing dos mercados de outright. Não escreve nenhum
@@ -11,8 +17,7 @@ export async function fetchSeasonMarkets(
   tournamentFilters: string[] = [],
   environment: string = getDefaultEnvironmentName(),
 ): Promise<SeasonMarket[]> {
-  const raw = await new SiteSportsbookOutrightsService(getEnvironment(environment).feed).getOutrights();
-  return parseOutrightsResponse(raw, tournamentFilters.length > 0 ? tournamentFilters : undefined);
+  return parseOutrightsResponse(await fetchRawOutrights(environment), tournamentFilters.length > 0 ? tournamentFilters : undefined);
 }
 
 /**
@@ -21,6 +26,5 @@ export async function fetchSeasonMarkets(
  * "aposta_futura" quando o mercado específico não importa muito pro teste.
  */
 export async function fetchFirstSeasonMarket(environment: string = getDefaultEnvironmentName()): Promise<SeasonMarket[]> {
-  const raw = await new SiteSportsbookOutrightsService(getEnvironment(environment).feed).getOutrights();
-  return parseFirstActiveMarket(raw);
+  return parseFirstActiveMarket(await fetchRawOutrights(environment));
 }

@@ -6,10 +6,10 @@
  *   npm run fetch:fixtures -- --file matchIds.txt
  */
 import * as fs from 'fs';
-import * as path from 'path';
 import * as dotenv from 'dotenv';
 import { PROJECT_ROOT } from '../config/paths';
 import { fetchFixturesForInputs } from '../flows/fixturesFlow';
+import { savePoolFiles } from '../session/sessionStore';
 
 dotenv.config();
 
@@ -36,15 +36,17 @@ async function main() {
   }
 
   const { fixtures, liveFixtures, falhas } = await fetchFixturesForInputs(inputs);
+  const saved = savePoolFiles(PROJECT_ROOT, { fixtures, liveFixtures });
 
-  fs.writeFileSync(path.join(PROJECT_ROOT, 'fixtures.prod.json'), JSON.stringify(fixtures, null, 2));
-  fs.writeFileSync(path.join(PROJECT_ROOT, 'liveFixtures.prod.json'), JSON.stringify(liveFixtures, null, 2));
-
-  console.log(`\nFixtures pré-jogo: ${fixtures.length} -> fixtures.prod.json`);
-  console.log(`Fixtures ao vivo: ${liveFixtures.length} -> liveFixtures.prod.json`);
+  console.log(`\nFixtures pré-jogo: ${fixtures.length} -> ${saved.fixturesPath}`);
+  console.log(`Fixtures ao vivo: ${liveFixtures.length} -> ${saved.liveFixturesPath}`);
   if (falhas.length > 0) {
     console.log(`Falharam: ${falhas.join(', ')}`);
+    process.exitCode = 1;
   }
 }
 
-main();
+main().catch((err) => {
+  console.error(err?.message ?? err);
+  process.exit(1);
+});

@@ -1,5 +1,6 @@
-import * as fs from 'fs';
-import type { SessionPaths } from '../session/sessionStore';
+import { getDefaultEnvironmentName } from '../config/environments';
+import { createLogger } from '../logging/logger';
+import { readSession, type SessionPaths } from '../session/sessionStore';
 import { performLogin } from './loginFlow';
 
 /** Resolve o token na ordem: informado, arquivo de sessão e, no modo legado, variáveis do .env. */
@@ -10,13 +11,17 @@ export async function resolveToken(
   providedToken?: string,
 ): Promise<string> {
   if (providedToken) return providedToken;
+  const log = createLogger(sessionLabel);
 
-  if (fs.existsSync(paths.sessionFile)) {
-    const session = JSON.parse(fs.readFileSync(paths.sessionFile, 'utf-8'));
-    if (session.token) {
-      console.log(`[${sessionLabel}] Usando token de ${paths.sessionFile} (obtido em ${session.obtainedAt}).`);
-      return session.token;
+  const session = readSession(paths.sessionFile);
+  if (session?.token) {
+    if (session.environment && session.environment !== environment) {
+      throw new Error(
+        `[${sessionLabel}] O token em ${paths.sessionFile} foi obtido em "${session.environment}", mas a execução é em "${environment}". Rode "npm run login" no ambiente correto.`,
+      );
     }
+    log.info(`Usando token de ${paths.sessionFile} (obtido em ${session.obtainedAt}).`);
+    return session.token;
   }
 
   if (!paths.usingSessionDir) {
@@ -26,10 +31,15 @@ export async function resolveToken(
     const username = process.env.SITE_SPORTSBOOK_USERNAME ?? '';
     const password = process.env.SITE_SPORTSBOOK_PASSWORD ?? '';
     if (username && password) {
-      console.warn(`[${sessionLabel}] Usando SITE_SPORTSBOOK_USERNAME/SITE_SPORTSBOOK_PASSWORD do .env — prefira "npm run login".`);
+      log.warn('Usando SITE_SPORTSBOOK_USERNAME/SITE_SPORTSBOOK_PASSWORD do .env — prefira "npm run login".');
       return (await performLogin(environment, username, password)).token;
     }
   }
 
   throw new Error(`[${sessionLabel}] Nenhuma credencial encontrada. Rode "npm run login" (ou o assistente "npm run wizard") primeiro.`);
+}
+
+/** Ambiente em que a sessão foi autenticada (session.json); sem essa informação, usa SITE_SPORTSBOOK_ENV. */
+export function resolveSessionEnvironment(paths: SessionPaths): string {
+  return readSession(paths.sessionFile)?.environment ?? getDefaultEnvironmentName();
 }

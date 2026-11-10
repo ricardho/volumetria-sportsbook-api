@@ -127,12 +127,31 @@ npm run report
 |---|---|---|
 | `SITE_SPORTSBOOK_ENV` | Ambiente: `preprod` ou `prod` | `preprod` |
 | `SITE_SPORTSBOOK_SESSION_LABEL` | Sessão usada na execução | `default` |
-| `SITE_SPORTSBOOK_TOTAL_BETS` | Total de apostas | `500` |
-| `SITE_SPORTSBOOK_BATCH_SIZE` | Tamanho de cada lote | igual ao total |
-| `SITE_SPORTSBOOK_CONCURRENCY` | Requisições simultâneas | `20` na execução, `10` no settlement |
+| `SITE_SPORTSBOOK_TOTAL_BETS` | Total de apostas (`test:volumetry`) | **obrigatório** |
+| `SITE_SPORTSBOOK_BATCH_SIZE` | Tamanho de cada lote | `100` (ou o total, se menor) |
+| `SITE_SPORTSBOOK_CONCURRENCY` | Requisições simultâneas por sessão | `5` na execução, `10` no settlement |
 | `SITE_SPORTSBOOK_ERROR_THRESHOLD` | Taxa de erro que aborta a sessão (0 a 1) | `0.02` |
 | `SITE_SPORTSBOOK_BET_AMOUNT` | Valor fixo por aposta | sorteado na faixa configurada |
-| `SITE_SPORTSBOOK_MIN_PER_CATEGORY` | Mínimo garantido por categoria | sem mínimo |
+| `SITE_SPORTSBOOK_MIN_PER_CATEGORY` | Mínimo garantido por categoria (só `test:volumetry`) | sem mínimo |
+| `SITE_SPORTSBOOK_MAX_TOTAL_VALUE` | Teto de R$ em jogo por execução; acima dele nada é disparado | sem teto |
+
+Os valores são validados antes de qualquer aposta: número inválido, negativo ou
+threshold fora de 0–1 interrompe com erro. O wizard usa as mesmas variáveis de
+lote, concorrência, threshold e teto.
+
+### Proteções da execução
+
+- **Circuit breaker por lote**: a sessão aborta quando a taxa de erro de um lote
+  passa do threshold. Rejeições por conflito de seleções do Bet Builder não
+  contam, porque são esperadas.
+- **Token expirado**: um HTTP 401 interrompe a sessão na hora; as apostas
+  restantes do lote não são enviadas.
+- **Produção**: `test:volumetry` e o wizard pedem para digitar `PROD` antes de
+  começar. Fora de um terminal interativo, use
+  `npm run test:volumetry -- --confirmar-prod`.
+- **Pasta sincronizada**: se o projeto estiver em OneDrive, Dropbox ou similar,
+  a suíte avisa que tokens e dados de clientes vão para a nuvem. Prefira uma
+  pasta local.
 
 Pesos, faixa de valores e tamanho de múltiplas e Bet Builders ficam em
 [`src/config/marketsWeights.json`](src/config/marketsWeights.json).

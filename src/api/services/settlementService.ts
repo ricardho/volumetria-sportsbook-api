@@ -1,9 +1,7 @@
 import type { APIRequestContext } from '@playwright/test';
+import { toApiResult, type ApiResult } from '../apiClient';
 
-export interface SettlementLookup {
-  status: number;
-  body: any;
-}
+export type SettlementLookup = ApiResult;
 
 /**
  * ⚠️ CONTRATO FICTÍCIO, criado para demonstração no portfólio:
@@ -20,7 +18,6 @@ export class SiteSportsbookSettlementService {
 
   async getBet(betId: number | string): Promise<SettlementLookup> {
     const res = await this.request.get(`${this.baseUrl}/sportsbook/bet/${encodeURIComponent(String(betId))}`);
-    const body = await res.json().catch(() => null);
-    return { status: res.status(), body };
+    return toApiResult(res);
   }
 }

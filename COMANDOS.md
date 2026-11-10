@@ -73,9 +73,14 @@ $env:SITE_SPORTSBOOK_BATCH_SIZE="20"            # tamanho de cada lote
 $env:SITE_SPORTSBOOK_CONCURRENCY="5"            # requisições simultâneas no máximo
 $env:SITE_SPORTSBOOK_BET_AMOUNT="0.5"           # valor fixo de cada aposta (R$)
 $env:SITE_SPORTSBOOK_MIN_PER_CATEGORY="2"       # garante N ocorrências mínimas de cada categoria de mercado
+$env:SITE_SPORTSBOOK_MAX_TOTAL_VALUE="50"       # teto de R$ em jogo; acima disso nada é disparado
 
 npm run test:volumetry
 ```
+
+`SITE_SPORTSBOOK_TOTAL_BETS` é obrigatório. Em produção o comando pede para
+digitar `PROD` antes de começar; sem terminal interativo, use
+`npm run test:volumetry -- --confirmar-prod`.
 
 Se quiser voltar ao sorteio de valor aleatório (em vez de valor fixo), é só
 não definir `SITE_SPORTSBOOK_BET_AMOUNT` (ou apagar a linha do `.env`).

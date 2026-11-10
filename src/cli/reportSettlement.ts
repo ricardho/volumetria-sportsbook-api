@@ -8,6 +8,7 @@
  */
 import * as path from 'path';
 import * as dotenv from 'dotenv';
+import { readExecutionSettings } from '../config/runConfig';
 import { settleResultsFile } from '../flows/settlementFlow';
 import { resolveDefaultInputPaths } from '../reporting/generateReport';
 import { generateSettlementReport, summarizeSettlement } from '../reporting/generateSettlementReport';
@@ -17,7 +18,7 @@ dotenv.config();
 async function main() {
   const args = process.argv.slice(2);
   const inputs = args.length > 0 ? args : resolveDefaultInputPaths();
-  const concurrency = process.env.SITE_SPORTSBOOK_CONCURRENCY ? Number(process.env.SITE_SPORTSBOOK_CONCURRENCY) : undefined;
+  const { concurrency } = readExecutionSettings();
 
   const runs = [];
   for (const input of inputs) {

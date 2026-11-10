@@ -1,9 +1,5 @@
 import type { APIRequestContext } from '@playwright/test';
-
-interface AuthResult {
-  status: number;
-  body: any;
-}
+import { toApiResult, type ApiResult } from '../apiClient';
 
 /**
  * Service de autenticação do siteSportsbook — CONFIRMADO contra o siteSportsbook real em
@@ -16,9 +12,8 @@ export class SiteSportsbookAuthService {
   ) {}
 
   /** POST /auth/login — confirmado contra produção */
-  async login(username: string, password: string): Promise<AuthResult> {
+  async login(username: string, password: string): Promise<ApiResult> {
     const res = await this.request.post(`${this.baseUrl}/auth/login`, {
-      headers: { Accept: 'application/json' },
       data: {
         username,
         password,
@@ -27,8 +22,7 @@ export class SiteSportsbookAuthService {
         loginMode: 'email',
       },
     });
-    const body = await res.json().catch(() => null);
-    return { status: res.status(), body };
+    return toApiResult(res);
   }
 
   /**
@@ -37,13 +31,11 @@ export class SiteSportsbookAuthService {
    * O formato de resposta provavelmente segue o mesmo envelope
    * {success, results: {...}} do login, mas isso também não foi validado.
    */
-  async refreshToken(refreshToken: string): Promise<AuthResult> {
+  async refreshToken(refreshToken: string): Promise<ApiResult> {
     const res = await this.request.post(`${this.baseUrl}/auth/refresh`, {
-      headers: { Accept: 'application/json' },
       data: { refreshToken },
     });
-    const body = await res.json().catch(() => null);
-    return { status: res.status(), body };
+    return toApiResult(res);
   }
 }
 

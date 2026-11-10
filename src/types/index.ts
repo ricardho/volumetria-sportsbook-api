@@ -145,3 +145,16 @@ export interface SeasonMarket {
     outcomePrice: number;
   }>;
 }
+
+/** Fixture do pool já com os mercados carregados — formato gravado em fixtures.prod.json / liveFixtures.prod.json */
+export type PoolFixture = Fixture & { markets: FixtureMarket[] };
+
+/** Categorias "simples" (1 seleção numa partida) — base das apostas simples e das seleções de uma múltipla */
+export const SIMPLE_MARKET_CATEGORIES: readonly MarketCategory[] = [
+  'resultado_final',
+  'total_gols',
+  'parcial_1t',
+  'escanteios',
+  'cartoes',
+  'jogador',
+];

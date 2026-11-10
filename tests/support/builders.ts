@@ -1,5 +1,5 @@
-import type { PoolFixture } from '../../src/flows/fixturesFlow';
-import type { FixtureMarket, MarketCategory, SeasonMarket } from '../../src/types';
+import type { PoolFixture } from '../../src/types';
+import { SIMPLE_MARKET_CATEGORIES, type FixtureMarket, type MarketCategory, type SeasonMarket } from '../../src/types';
 
 export function market(category: MarketCategory, marketId = '1'): FixtureMarket {
   return {
@@ -38,7 +38,7 @@ export function seasonMarket(): SeasonMarket {
   } as SeasonMarket;
 }
 
-const SIMPLE: MarketCategory[] = ['resultado_final', 'total_gols', 'parcial_1t', 'escanteios', 'cartoes', 'jogador'];
+const SIMPLE = [...SIMPLE_MARKET_CATEGORIES];
 
 /** Pool que cobre todas as categorias de marketsWeights.json */
 export function fullPool() {

@@ -11,12 +11,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
 import prompts from 'prompts';
+import { assertWithinStakeLimit, estimateMaxStake, readExecutionSettings } from '../config/runConfig';
 import { performLogin } from '../flows/loginFlow';
 import { fetchFixturesForInputs } from '../flows/fixturesFlow';
 import { fetchFirstSeasonMarket } from '../flows/outrightsFlow';
-import { runVolumetryForSession } from '../runner/volumetryRunner';
+import { DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_ERROR_THRESHOLD, runVolumetryForSession } from '../runner/volumetryRunner';
 import { generateReportFromFiles } from '../reporting/generateReport';
-import { ensureSessionDir, saveSession } from '../session/sessionStore';
+import { ensureSessionDir, saveSession, savePoolFiles } from '../session/sessionStore';
+import { confirmProduction, confirmSimNao } from './shared/prompts';
 
 dotenv.config();
 
@@ -26,25 +28,16 @@ interface SessionPlan {
   betAmount: number;
 }
 
-/**
- * Confirmação s/n em português. O tipo "confirm" nativo da lib prompts só
- * aceita as teclas y/n (inglês) mesmo com mensagem em português — isso
- * confundia quem digitava "s" e via a tela travar sem nenhum feedback.
- */
-async function confirmSimNao(message: string, defaultValue: boolean): Promise<boolean> {
-  const { resposta } = await prompts({
-    type: 'text',
-    name: 'resposta',
-    message: `${message} (s/n)`,
-    initial: defaultValue ? 's' : 'n',
-    validate: (v: string) => ['s', 'sim', 'n', 'nao', 'não'].includes(v.trim().toLowerCase()) || 'Digite "s" ou "n".',
-  });
-  if (resposta === undefined) return defaultValue; // Ctrl+C / cancelado
-  return ['s', 'sim'].includes(resposta.trim().toLowerCase());
-}
+/** O rótulo vira nome de pasta em .sessions/ — nada de barras, espaços ou "..". */
+const VALID_LABEL = /^[\w-]+$/;
 
 async function main() {
   console.log('=== Assistente de Configuração — Teste de Volumetria siteSportsbook ===\n');
+
+  // Lote, concorrência e threshold vêm do .env (validados) — os mesmos do test:volumetry.
+  // minPerCategory fica de fora de propósito: cada sessão do wizard tem seu próprio pool,
+  // e exigir cobertura de toda categoria derrubaria sessões sem outrights/ao vivo.
+  const settings = readExecutionSettings();
 
   const { environment } = await prompts({
     type: 'text',
@@ -95,6 +88,7 @@ async function main() {
       name: 'label',
       message: 'Rótulo para essa sessão (ex: usuario1):',
       initial: `usuario${sessionCount}`,
+      validate: (v: string) => VALID_LABEL.test(v.trim()) || 'Use só letras, números, hífen ou sublinhado.',
     });
     const sessionLabel = (label || `usuario${sessionCount}`).trim();
 
@@ -113,8 +107,7 @@ async function main() {
     } else {
       console.log('Buscando fixtures...');
       const { fixtures, liveFixtures, falhas } = await fetchFixturesForInputs(inputs, environment);
-      fs.writeFileSync(path.join(dir, 'fixtures.prod.json'), JSON.stringify(fixtures, null, 2));
-      fs.writeFileSync(path.join(dir, 'liveFixtures.prod.json'), JSON.stringify(liveFixtures, null, 2));
+      savePoolFiles(dir, { fixtures, liveFixtures });
       console.log(
         `${fixtures.length} fixtures pré-jogo, ${liveFixtures.length} ao vivo salvas para "${sessionLabel}".${falhas.length > 0 ? ` (${falhas.length} falharam)` : ''}`,
       );
@@ -166,17 +159,29 @@ async function main() {
   let grandTotalBets = 0;
   let grandTotalValue = 0;
   for (const s of sessions) {
-    const subtotal = s.totalBets * s.betAmount;
+    const subtotal = estimateMaxStake(s.totalBets, s.betAmount);
     grandTotalBets += s.totalBets;
     grandTotalValue += subtotal;
     console.log(`  ${s.label}: ${s.totalBets} apostas × R$${s.betAmount.toFixed(2)} = R$${subtotal.toFixed(2)}`);
   }
   console.log(`  TOTAL: ${grandTotalBets} apostas, R$${grandTotalValue.toFixed(2)} em jogo`);
-  if (environment === 'prod') {
-    console.log('  ⚠️  Ambiente é PRODUÇÃO — dinheiro real será apostado.');
+  console.log(
+    `  Execução: lote ${settings.batchSize ?? `até ${DEFAULT_BATCH_SIZE}`}, concorrência ${settings.concurrency ?? DEFAULT_CONCURRENCY} por sessão, ` +
+      `aborta com taxa de erro > ${((settings.errorThreshold ?? DEFAULT_ERROR_THRESHOLD) * 100).toFixed(2)}% ou HTTP 401`,
+  );
+  try {
+    assertWithinStakeLimit(grandTotalValue, settings.maxTotalValue);
+  } catch (err: any) {
+    console.error(`\n${err.message}`);
+    console.log('Execução cancelada. As sessões configuradas continuam salvas em .sessions/ para uso posterior.');
+    process.exitCode = 1;
+    return;
   }
-
-  const confirmStart = await confirmSimNao('\nConfirma o início da execução?', false);
+  // Em produção, "s" não basta: é preciso digitar PROD (evita confirmar no automático).
+  const confirmStart =
+    environment === 'prod'
+      ? await confirmProduction(`${grandTotalBets} apostas, até R$${grandTotalValue.toFixed(2)} em jogo.`, [])
+      : await confirmSimNao('\nConfirma o início da execução?', false);
 
   if (!confirmStart) {
     console.log('Execução cancelada. As sessões configuradas continuam salvas em .sessions/ para uso posterior.');
@@ -192,6 +197,9 @@ async function main() {
         environment,
         totalBets: s.totalBets,
         betAmount: s.betAmount,
+        batchSize: settings.batchSize,
+        concurrency: settings.concurrency,
+        errorThreshold: settings.errorThreshold,
       }).catch((err) => {
         console.error(`[${s.label}] Falhou: ${err.message}`);
         return null;

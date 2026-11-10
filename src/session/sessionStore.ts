@@ -2,6 +2,39 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PROJECT_ROOT, SAMPLES_DIR, SESSIONS_ROOT } from '../config/paths';
 import type { LoginOutcome } from '../flows/loginFlow';
+import { createLogger } from '../logging/logger';
+import type { PoolFixture } from '../types';
+
+const log = createLogger('sessão');
+
+/** Conteúdo de .sessions/<label>/session.json (ou .session.json no modo legado). */
+export interface StoredSession {
+  token?: string;
+  refreshToken?: string;
+  environment?: string;
+  obtainedAt?: string;
+}
+
+/** Pastas sincronizadas com a nuvem: o .gitignore não impede que tokens e dados de cliente sejam enviados para lá. */
+const CLOUD_SYNC_MARKERS = ['onedrive', 'dropbox', 'google drive', 'icloud'];
+let cloudSyncWarned = false;
+
+function warnIfCloudSynced(): void {
+  if (cloudSyncWarned) return;
+  const lower = PROJECT_ROOT.toLowerCase();
+  if (CLOUD_SYNC_MARKERS.some((m) => lower.includes(m))) {
+    cloudSyncWarned = true;
+    log.warn(
+      `O projeto está numa pasta sincronizada com a nuvem (${PROJECT_ROOT}). Tokens em .sessions/ e resultados com dados de cliente ` +
+        'serão enviados para essa nuvem. Mova o projeto para uma pasta local ou exclua .sessions/ da sincronização.',
+    );
+  }
+}
+
+/** Grava JSON com permissão restrita ao dono (0600 em sistemas POSIX; no Windows vale a ACL da pasta). */
+function writeJsonPrivate(filePath: string, data: unknown): void {
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), { mode: 0o600 });
+}
 
 export function sessionDir(label: string): string {
   return path.join(SESSIONS_ROOT, label);
@@ -28,17 +61,36 @@ export function listSessionLabels(): string[] {
 
 /** Grava o resultado do login em .sessions/<label>/session.json */
 export function saveSession(label: string, environment: string, outcome: LoginOutcome): string {
+  warnIfCloudSynced();
   const dir = ensureSessionDir(label);
   const sessionPath = path.join(dir, 'session.json');
-  fs.writeFileSync(
-    sessionPath,
-    JSON.stringify(
-      { token: outcome.token, refreshToken: outcome.refreshToken, environment, obtainedAt: new Date().toISOString() },
-      null,
-      2,
-    ),
-  );
+  const session: StoredSession = {
+    token: outcome.token,
+    refreshToken: outcome.refreshToken,
+    environment,
+    obtainedAt: new Date().toISOString(),
+  };
+  writeJsonPrivate(sessionPath, session);
   return sessionPath;
+}
+
+/** Lê um arquivo de sessão; retorna null se ele não existir. */
+export function readSession(sessionFile: string): StoredSession | null {
+  if (!fs.existsSync(sessionFile)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(sessionFile, 'utf-8')) as StoredSession;
+  } catch (err: any) {
+    throw new Error(`Arquivo de sessão corrompido (${sessionFile}): ${err.message}. Rode "npm run login" novamente.`);
+  }
+}
+
+/** Grava o pool de fixtures (pré-jogo + ao vivo) no diretório informado. Retorna os caminhos gravados. */
+export function savePoolFiles(dir: string, pool: { fixtures: PoolFixture[]; liveFixtures: PoolFixture[] }) {
+  const fixturesPath = path.join(dir, 'fixtures.prod.json');
+  const liveFixturesPath = path.join(dir, 'liveFixtures.prod.json');
+  fs.writeFileSync(fixturesPath, JSON.stringify(pool.fixtures, null, 2));
+  fs.writeFileSync(liveFixturesPath, JSON.stringify(pool.liveFixtures, null, 2));
+  return { fixturesPath, liveFixturesPath };
 }
 
 export interface SessionPaths {
