@@ -1,35 +1,36 @@
-# Volumetria de Apostas — siteSportsbook
+# Bet Volume Testing — siteSportsbook
 
-Suíte em TypeScript e Playwright para testes de volumetria em uma API de
-sportsbook. Ela gera apostas a partir de dados reais de partidas, dispara o
-volume em lotes com concorrência controlada, interrompe a execução quando a
-taxa de erro passa do limite e confere o resultado de cada aposta depois do
-settlement.
+**English** | [Português](README.pt-BR.md)
 
-> **Projeto anonimizado.** Baseado em um trabalho profissional, com marca, URLs,
-> identificadores de partidas e credenciais substituídos por valores fictícios.
-> Por isso, os comandos que chamam a API não funcionam sem configurar um
-> ambiente real. Os testes automatizados rodam offline, logo após a instalação.
+A TypeScript and Playwright suite for volume testing a sportsbook API. It
+generates bets from real match data, fires the volume in batches with
+controlled concurrency, stops the run when the error rate goes over the limit
+and checks the outcome of every bet after settlement.
 
-## Destaques
+> **Anonymized project.** Based on professional work, with brand, URLs, match
+> identifiers and credentials replaced by fictitious values. Because of that,
+> the commands that call the API do not work without configuring a real
+> environment. The automated tests run offline, right after installation.
 
-- **Service Objects**, o equivalente ao Page Object Model para APIs: cada API tem uma classe, e nenhuma outra camada faz HTTP.
-- **Geração de apostas por pesos**, com 10 categorias, incluindo múltiplas, Bet Builder, ao vivo e Aposta Futura.
-- **Cobertura garantida** de cada categoria, mesmo em volumes pequenos.
-- **Circuit breaker** por lote, que aborta a sessão se a taxa de erro ultrapassar o limite ou se o token expirar (HTTP 401).
-- **Travas para produção**: configuração validada antes de disparar, teto de valor total e confirmação explícita digitando `PROD`.
-- **Múltiplas sessões em paralelo**, cada uma com login, dados e resultados próprios.
-- **Validação de settlement**, que aponta liquidações incoerentes e pode falhar um pipeline de CI.
-- **Relatórios HTML autocontidos**, que abrem sem internet.
-- **Testes offline** contra servidor mock, sem browser e sem nenhuma chamada a API real.
+## Highlights
+
+- **Service Objects**, the API equivalent of the Page Object Model: each API has one class, and no other layer makes HTTP calls.
+- **Weighted bet generation**, with 10 categories, including accumulators (multiples), Bet Builder, live and outright (futures) bets.
+- **Guaranteed coverage** of every category, even at small volumes.
+- **Per-batch circuit breaker**, which aborts the session if the error rate exceeds the limit or if the token expires (HTTP 401).
+- **Production safeguards**: configuration validated before firing, a cap on the total amount at stake and explicit confirmation by typing `PROD`.
+- **Multiple sessions in parallel**, each with its own login, data and results.
+- **Settlement validation**, which flags inconsistent settlements and can fail a CI pipeline.
+- **Self-contained HTML reports** that open without internet access.
+- **Offline tests** against a mock server, with no browser and no calls to any real API.
 
 ## Stack
 
-TypeScript · Playwright (`APIRequestContext` e Playwright Test) · Faker · ts-node · dotenv · prompts
+TypeScript · Playwright (`APIRequestContext` and Playwright Test) · Faker · ts-node · dotenv · prompts
 
-## Início rápido
+## Quick start
 
-Requer Node.js 18 ou superior.
+Requires Node.js 18 or later.
 
 ```bash
 git clone https://github.com/ricardho/volumetria-sportsbook-api.git
@@ -38,83 +39,83 @@ npm install
 npm test
 ```
 
-## Como funciona
+## How it works
 
 ```mermaid
 flowchart LR
-    A[Login] --> B[Buscar fixtures e outrights]
-    B --> C[Gerar apostas por pesos]
-    C --> D[Disparar em lotes]
-    D --> E{Taxa de erro<br/>acima do limite?}
-    E -- sim --> F[Aborta a sessão]
-    E -- não --> D
+    A[Login] --> B[Fetch fixtures and outrights]
+    B --> C[Generate weighted bets]
+    C --> D[Fire in batches]
+    D --> E{Error rate<br/>above the limit?}
+    E -- yes --> F[Abort the session]
+    E -- no --> D
     D --> G[results-*.ndjson]
     F --> G
-    G --> H[Relatório de execução]
-    G -. após o fim das partidas .-> I[Consulta de settlement]
-    I --> J[Relatório de settlement]
+    G --> H[Execution report]
+    G -. after the matches end .-> I[Settlement lookup]
+    I --> J[Settlement report]
 ```
 
-A execução tem dois momentos, porque o resultado de uma aposta só existe depois
-do fim da partida:
+A run has two stages, because a bet's outcome only exists after the match is
+over:
 
-1. **Execução:** as apostas são criadas e registradas com o ID devolvido pela API.
-2. **Settlement:** depois das partidas, cada aposta é consultada e conferida.
+1. **Execution:** bets are placed and recorded with the ID returned by the API.
+2. **Settlement:** after the matches, each bet is looked up and checked.
 
-## Arquitetura
+## Architecture
 
 ```
 src/
-  config/      environments.ts (fonte única das URLs), runConfig.ts (leitura e validação do .env), paths.ts, marketsWeights.json
-  api/         apiClient.ts (contexto HTTP com timeout, resultado padronizado) e services/ (auth, bet, fixture, outrights, settlement)
-  types/       contratos das apostas, dos pools e do settlement
-  parsers/     resposta bruta da API -> formato interno (fixtures, outrights, resposta da aposta)
-  logging/     logger de console com timestamp e nível
-  factories/   geração de apostas por peso e cobertura
-  flows/       fluxos de negócio que combinam services e parsers
-  session/     persistência das sessões em .sessions/<rótulo>/
-  runner/      executor em lotes, limitador de concorrência, classificação de erros
-  reporting/   relatórios HTML de execução e de settlement
-  cli/         pontos de entrada dos comandos npm (shared/ com os prompts e a confirmação de produção)
+  config/      environments.ts (single source of URLs), runConfig.ts (reads and validates .env), paths.ts, marketsWeights.json
+  api/         apiClient.ts (HTTP context with timeout, standardized result) and services/ (auth, bet, fixture, outrights, settlement)
+  types/       contracts for bets, pools and settlement
+  parsers/     raw API response -> internal format (fixtures, outrights, bet response)
+  logging/     console logger with timestamp and level
+  factories/   bet generation by weight and coverage
+  flows/       business flows that combine services and parsers
+  session/     session persistence in .sessions/<label>/
+  runner/      batch executor, concurrency limiter, error classification
+  reporting/   execution and settlement HTML reports
+  cli/         entry points for the npm commands (shared/ holds the prompts and the production confirmation)
 data/
-  samples/       exemplos do formato dos pools
-  raw-fixtures/  respostas de fixture capturadas manualmente
+  samples/       examples of the pool format
+  raw-fixtures/  manually captured fixture responses
 tests/
-  unit/          regras puras: factory, parsers, limitador, settlement
-  integration/   services, executor e settlement contra servidor mock
-  support/       builders de dados e mock server
+  unit/          pure rules: factory, parsers, limiter, settlement
+  integration/   services, executor and settlement against a mock server
+  support/       data builders and mock server
 ```
 
-As dependências seguem uma direção principal: `cli → runner/flows → api/services → config`.
+Dependencies follow one main direction: `cli → runner/flows → api/services → config`.
 
-## Comandos
+## Commands
 
-| Comando | O que faz |
+| Command | What it does |
 |---|---|
-| `npm run wizard` | Assistente que configura as sessões, executa em paralelo e gera o relatório |
-| `npm run login` | Autentica e salva somente o token, sem gravar a senha |
-| `npm run fetch:fixtures -- <IDs ou URLs>` | Busca partidas e monta os pools |
-| `npm run fetch:outrights -- "<torneio>"` | Busca mercados de Aposta Futura, filtrando pelo nome |
-| `npm run build:pool` | Monta os pools a partir de `data/raw-fixtures/` |
-| `npm run test:volumetry` | Executa uma sessão configurada por variáveis de ambiente |
-| `npm run report` | Gera o relatório de execução |
-| `npm run report:settlement` | Consulta os resultados finais e gera o relatório de settlement |
-| `npm test` | Roda os testes automatizados da suíte |
-| `npm run typecheck` | Verifica os tipos sem gerar build |
+| `npm run wizard` | Wizard that configures the sessions, runs them in parallel and generates the report |
+| `npm run login` | Authenticates and saves only the token, without storing the password |
+| `npm run fetch:fixtures -- <IDs or URLs>` | Fetches matches and builds the pools |
+| `npm run fetch:outrights -- "<tournament>"` | Fetches outright (futures) markets, filtered by name |
+| `npm run build:pool` | Builds the pools from `data/raw-fixtures/` |
+| `npm run test:volumetry` | Runs one session configured through environment variables |
+| `npm run report` | Generates the execution report |
+| `npm run report:settlement` | Looks up the final outcomes and generates the settlement report |
+| `npm test` | Runs the suite's automated tests |
+| `npm run typecheck` | Checks types without building |
 
-A referência passo a passo está em [COMANDOS.md](COMANDOS.md).
+The step-by-step reference is in [COMANDOS.md](COMANDOS.md) (in Portuguese).
 
-## Executando contra um ambiente real
+## Running against a real environment
 
-> ⚠️ Esta suíte cria apostas de verdade e, em produção, movimenta dinheiro real.
-> Use somente com autorização do responsável pela plataforma.
+> ⚠️ This suite places real bets and, in production, moves real money.
+> Use it only with authorization from the platform owner.
 
-1. Configure as URLs em `src/config/environments.ts`.
-2. Ajuste os Service Objects em `src/api/services/` ao contrato da sua API.
-3. Rode `npm run wizard`. Ele conduz login, partidas, volume e valor, mostra o
-   total em R$ e pede confirmação antes de disparar.
+1. Configure the URLs in `src/config/environments.ts`.
+2. Adapt the Service Objects in `src/api/services/` to your API's contract.
+3. Run `npm run wizard`. It guides you through login, matches, volume and
+   amount, shows the total in BRL (R$) and asks for confirmation before firing.
 
-Para configurar cada etapa manualmente, copie `.env.example` para `.env`:
+To configure each step manually, copy `.env.example` to `.env`:
 
 ```bash
 npm run login
@@ -123,126 +124,128 @@ SITE_SPORTSBOOK_FIXTURES_PATH=./fixtures.prod.json npm run test:volumetry
 npm run report
 ```
 
-### Configuração
+### Configuration
 
-| Variável | Descrição | Padrão |
+| Variable | Description | Default |
 |---|---|---|
-| `SITE_SPORTSBOOK_ENV` | Ambiente: `preprod` ou `prod` | `preprod` |
-| `SITE_SPORTSBOOK_SESSION_LABEL` | Sessão usada na execução | `default` |
-| `SITE_SPORTSBOOK_TOTAL_BETS` | Total de apostas (`test:volumetry`) | **obrigatório** |
-| `SITE_SPORTSBOOK_BATCH_SIZE` | Tamanho de cada lote | `100` (ou o total, se menor) |
-| `SITE_SPORTSBOOK_CONCURRENCY` | Requisições simultâneas por sessão | `5` na execução, `10` no settlement |
-| `SITE_SPORTSBOOK_ERROR_THRESHOLD` | Taxa de erro que aborta a sessão (0 a 1) | `0.02` |
-| `SITE_SPORTSBOOK_BET_AMOUNT` | Valor fixo por aposta | sorteado na faixa configurada |
-| `SITE_SPORTSBOOK_MIN_PER_CATEGORY` | Mínimo garantido por categoria (só `test:volumetry`) | sem mínimo |
-| `SITE_SPORTSBOOK_MAX_TOTAL_VALUE` | Teto de R$ em jogo por execução; acima dele nada é disparado | sem teto |
+| `SITE_SPORTSBOOK_ENV` | Environment: `preprod` or `prod` | `preprod` |
+| `SITE_SPORTSBOOK_SESSION_LABEL` | Session used in the run | `default` |
+| `SITE_SPORTSBOOK_TOTAL_BETS` | Total number of bets (`test:volumetry`) | **required** |
+| `SITE_SPORTSBOOK_BATCH_SIZE` | Size of each batch | `100` (or the total, if smaller) |
+| `SITE_SPORTSBOOK_CONCURRENCY` | Concurrent requests per session | `5` for execution, `10` for settlement |
+| `SITE_SPORTSBOOK_ERROR_THRESHOLD` | Error rate that aborts the session (0 to 1) | `0.02` |
+| `SITE_SPORTSBOOK_BET_AMOUNT` | Fixed amount per bet | random within the configured range |
+| `SITE_SPORTSBOOK_MIN_PER_CATEGORY` | Guaranteed minimum per category (`test:volumetry` only) | no minimum |
+| `SITE_SPORTSBOOK_MAX_TOTAL_VALUE` | Cap on the amount (R$) at stake per run; above it nothing is fired | no cap |
 
-Os valores são validados antes de qualquer aposta: número inválido, negativo ou
-threshold fora de 0–1 interrompe com erro. O wizard usa as mesmas variáveis de
-lote, concorrência, threshold e teto.
+Values are validated before any bet is placed: an invalid or negative number,
+or a threshold outside 0–1, stops the run with an error. The wizard uses the
+same batch, concurrency, threshold and cap variables.
 
-### Proteções da execução
+### Execution safeguards
 
-- **Circuit breaker por lote**: a sessão aborta quando a taxa de erro de um lote
-  passa do threshold. Rejeições por conflito de seleções do Bet Builder não
-  contam, porque são esperadas.
-- **Token expirado**: um HTTP 401 interrompe a sessão na hora; as apostas
-  restantes do lote não são enviadas.
-- **Produção**: `test:volumetry` e o wizard pedem para digitar `PROD` antes de
-  começar. Fora de um terminal interativo, use
+- **Per-batch circuit breaker**: the session aborts when a batch's error rate
+  goes over the threshold. Bet Builder selection-conflict rejections do not
+  count, because they are expected.
+- **Expired token**: an HTTP 401 stops the session immediately; the remaining
+  bets in the batch are not sent.
+- **Production**: `test:volumetry` and the wizard ask you to type `PROD` before
+  starting. Outside an interactive terminal, use
   `npm run test:volumetry -- --confirmar-prod`.
-- **Pasta sincronizada**: se o projeto estiver em OneDrive, Dropbox ou similar,
-  a suíte avisa que tokens e dados de clientes vão para a nuvem. Prefira uma
-  pasta local.
+- **Synced folder**: if the project is in OneDrive, Dropbox or similar, the
+  suite warns that tokens and customer data will be uploaded to the cloud.
+  Prefer a local folder.
 
-Pesos, faixa de valores e tamanho de múltiplas e Bet Builders ficam em
+Weights, the amount range and the size of accumulators and Bet Builders are in
 [`src/config/marketsWeights.json`](src/config/marketsWeights.json).
 
-Comece com um volume pequeno em pré-produção e aumente em etapas, conferindo os
-resultados e o settlement de cada etapa antes de seguir.
+Start with a small volume in pre-production and increase it in stages,
+checking the results and the settlement of each stage before moving on.
 
-## Regras de geração
+## Generation rules
 
-### Cobertura de categorias
+### Category coverage
 
-Antes de disparar qualquer aposta, o executor verifica se cada categoria com
-peso configurado tem mercados disponíveis nos pools da sessão:
+Before firing any bet, the executor checks that every category with a
+configured weight has markets available in the session's pools:
 
-- **Sorteio por pesos:** categorias sem cobertura são excluídas com um aviso, e a sessão continua.
-- **Com `SITE_SPORTSBOOK_MIN_PER_CATEGORY`:** a sessão para antes da primeira aposta e informa qual categoria falta.
+- **Weighted draw:** categories without coverage are excluded with a warning, and the session continues.
+- **With `SITE_SPORTSBOOK_MIN_PER_CATEGORY`:** the session stops before the first bet and reports which category is missing.
 
-No modo com mínimo garantido, o restante do volume segue os pesos e a ordem final é embaralhada.
+In guaranteed-minimum mode, the rest of the volume follows the weights and the final order is shuffled.
 
-### Múltiplas e Bet Builder
+### Accumulators and Bet Builder
 
-- **Múltiplas** combinam seleções de partidas diferentes.
-- **Bet Builders** combinam seleções da mesma partida, com no máximo um mercado por família, para reduzir rejeições por correlação.
+- **Accumulators** combine selections from different matches.
+- **Bet Builders** combine selections from the same match, with at most one market per family, to reduce correlation rejections.
 
-Quando a API rejeita uma combinação por conflito, o resultado é registrado como
-`conflito_selecao`, separado de `erro`, para que a rejeição esperada apareça
-distinta das falhas de sistema no relatório.
+When the API rejects a combination due to a conflict, the result is recorded
+as `conflito_selecao` (selection conflict), separately from `erro` (error), so
+that expected rejections show up apart from system failures in the report.
 
-### Múltiplas sessões
+### Multiple sessions
 
-Cada sessão vive em `.sessions/<rótulo>/`, com token, partidas e resultados
-próprios, sem pool compartilhado. O wizard executa todas em paralelo, simulando
-vários usuários ao mesmo tempo.
+Each session lives in `.sessions/<label>/`, with its own token, matches and
+results, and no shared pool. The wizard runs them all in parallel, simulating
+several users at the same time.
 
-## Relatórios
+## Reports
 
-### Execução — `npm run report`
+### Execution — `npm run report`
 
-Gera um HTML com taxa de sucesso, contagem por status, gráfico, comparação entre
-sessões e detalhe de cada aposta. Reflete o **momento da criação** da aposta.
+Generates an HTML report with the success rate, count per status, a chart, a
+comparison between sessions and the details of each bet. It reflects the
+**moment the bet was placed**.
 
 ### Settlement — `npm run report:settlement`
 
-Consulta cada aposta aceita pelo `apostaId`, grava `settlement-*.ndjson` sem
-alterar o arquivo original e gera um HTML com resultado final, total apostado,
-total retornado e GGR. Pode ser repetido até não restarem apostas pendentes.
+Looks up each accepted bet by its `apostaId`, writes `settlement-*.ndjson`
+without changing the original file and generates an HTML report with the
+final outcome, total staked, total returned and GGR (gross gaming revenue). It
+can be repeated until no pending bets remain.
 
-Cada liquidação também é validada:
+Each settlement is also validated:
 
-| Resultado | É apontado como inconsistência quando |
+| Outcome | Flagged as inconsistent when |
 |---|---|
-| `ganhou` | o retorno é menor ou igual ao valor apostado |
-| `perdeu` | o retorno é diferente de zero |
-| `devolvida` | o retorno é diferente do valor apostado |
-| qualquer liquidada | falta o valor de retorno ou a data de liquidação |
-| valor fora do contrato | sempre |
+| `ganhou` (won) | the return is less than or equal to the amount staked |
+| `perdeu` (lost) | the return is not zero |
+| `devolvida` (voided / refunded) | the return differs from the amount staked |
+| any settled bet | the return amount or the settlement date is missing |
+| value outside the contract | always |
 
-Havendo inconsistência, o comando termina com código de saída 1. Se o token
-expirar, a execução para e orienta um novo `npm run login`.
+If there is any inconsistency, the command exits with code 1. If the token
+expires, the run stops and tells you to run `npm run login` again.
 
-> **Contrato de demonstração:** o settlement usa um contrato fictício,
-> `GET /sportsbook/bet/{id}`, que retorna
-> `{ bet: { id, codigo, resultado, valor_retorno, liquidada_em } }`, e foi
-> testado contra servidor mock. Para uma API real, ajuste
-> `src/api/services/settlementService.ts` e `interpretSettlementResponse` em
+> **Demo contract:** settlement uses a fictitious contract,
+> `GET /sportsbook/bet/{id}`, which returns
+> `{ bet: { id, codigo, resultado, valor_retorno, liquidada_em } }`, and was
+> tested against a mock server. For a real API, adapt
+> `src/api/services/settlementService.ts` and `interpretSettlementResponse` in
 > `src/flows/settlementFlow.ts`.
 
-## Testes
+## Tests
 
 ```bash
 npm test
 ```
 
-Nenhum teste precisa de browser ou internet. As integrações sobem um servidor
-HTTP local, e a cobertura inclui:
+No test needs a browser or internet access. The integration tests start a
+local HTTP server, and the coverage includes:
 
-- geração de apostas, cobertura por categoria e regras de múltiplas;
-- parsing de fixtures pré-jogo e ao vivo;
-- limite de concorrência e classificação de erros;
-- contrato HTTP dos Service Objects e interpretação da resposta da aposta;
-- validação das variáveis do `.env` e teto de valor total;
-- execução em lotes, autenticação e circuit breaker (inclusive lote padrão, conflitos de seleção, HTTP 401 e token de outro ambiente);
-- settlement, token expirado e consolidação financeira;
-- garantia de que todas as URLs configuradas usam o domínio fictício.
+- bet generation, per-category coverage and accumulator rules;
+- parsing of pre-match and live fixtures;
+- concurrency limit and error classification;
+- the Service Objects' HTTP contract and interpretation of the bet response;
+- validation of the `.env` variables and the total amount cap;
+- batch execution, authentication and the circuit breaker (including the default batch, selection conflicts, HTTP 401 and a token from another environment);
+- settlement, expired token and financial consolidation;
+- a check that every configured URL uses the fictitious domain.
 
-## Limitações conhecidas
+## Known limitations
 
-- O `refreshToken` em `authService.ts` é uma hipótese não validada e não é usado pelos fluxos.
-- O Correlation ID identifica cada aposta só no log local. O cruzamento com o settlement usa `apostaId` e `codigoRetornado`.
-- O conflito de seleções é reconhecido pelo texto da mensagem (`CONFLICT_PATTERNS` em `src/runner/errorClassifier.ts`), observado na UI e ainda não confirmado no JSON da API.
-- Mercados com `marketId` fora de `MARKET_CATEGORY_BY_ID` (`src/parsers/fixtureParser.ts`) são ignorados.
-- Os arquivos em `data/samples/` documentam o formato, mas trazem `colocarAquiGameIds` no lugar dos IDs e precisam ser preenchidos antes de uma execução.
+- The `refreshToken` in `authService.ts` is an unvalidated hypothesis and is not used by the flows.
+- The Correlation ID identifies each bet only in the local log. Matching with settlement uses `apostaId` and `codigoRetornado`.
+- Selection conflicts are recognized by the message text (`CONFLICT_PATTERNS` in `src/runner/errorClassifier.ts`), observed in the UI and not yet confirmed in the API's JSON.
+- Markets with a `marketId` outside `MARKET_CATEGORY_BY_ID` (`src/parsers/fixtureParser.ts`) are ignored.
+- The files in `data/samples/` document the format, but contain `colocarAquiGameIds` in place of the IDs and must be filled in before a run.
